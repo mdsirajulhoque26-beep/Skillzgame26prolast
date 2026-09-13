@@ -1,0 +1,141 @@
+@import "tailwindcss";
+
+@keyframes marquee {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
+.animate-marquee {
+  display: inline-block;
+  white-space: nowrap;
+  animation: marquee 22s linear infinite;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fadeOutUp {
+  0% { opacity: 1; transform: translateY(0) scale(1); }
+  50% { opacity: 1; transform: translateY(-20px) scale(1.15); }
+  100% { opacity: 0; transform: translateY(-38px) scale(0.9); }
+}
+
+.animate-fade-out-up {
+  animation: fadeOutUp 1s ease-out forwards;
+}
+
+/* Custom smooth scrollbar */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+
+
+/* Block Puzzle gameplay is a true viewport-locked surface.
+   These rules are scoped to the playing screen only, so lobby/history/wallet/etc.
+   keep their normal scrolling behavior. */
+.block-gameplay-locked {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 57px;
+  bottom: 50px;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  overflow: hidden !important;
+  overscroll-behavior: none;
+  touch-action: none;
+  z-index: 30;
+}
+
+.block-gameplay-stage {
+  height: 100%;
+  min-height: 0;
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
+.block-gameplay-board-slot {
+  min-height: 0;
+  overflow: hidden;
+  width: 100%;
+  flex: 1 1 auto;
+}
+
+.block-board-shell {
+  width: 100%;
+  max-height: 100%;
+}
+
+.block-board-frame {
+  width: 100%;
+  max-height: 100%;
+}
+
+.block-puzzle-grid {
+  width: min(100%, 460px, calc(100dvh - 330px));
+  height: auto;
+  max-height: 100%;
+  flex: 0 0 auto;
+}
+
+.block-gameplay-tray {
+  max-height: 116px;
+}
+
+.block-gameplay-tray > div {
+  max-height: 116px;
+}
+
+.block-gameplay-controls {
+  min-height: 52px;
+}
+
+@media (max-height: 700px) {
+  .block-gameplay-stage {
+    gap: 4px;
+  }
+  .block-gameplay-tray,
+  .block-gameplay-tray > div {
+    max-height: 102px;
+  }
+  .block-gameplay-controls {
+    min-height: 46px;
+  }
+}
+
+@media (max-height: 620px) {
+  .block-gameplay-tray,
+  .block-gameplay-tray > div {
+    max-height: 92px;
+  }
+  .block-gameplay-controls {
+    min-height: 44px;
+  }
+}
+
+
+/* Fast Block Puzzle controls: remove visual lag while dragging/placing blocks. */
+.block-puzzle-grid,
+.block-puzzle-grid * {
+  -webkit-tap-highlight-color: transparent;
+}
+.block-gameplay-stage {
+  -webkit-user-select: none;
+  user-select: none;
+}
