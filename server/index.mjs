@@ -683,14 +683,12 @@ app.get('/api/block-puzzle/leaderboard/active', auth, async (req, res) => {
 
 app.get('/api/block-puzzle/matches/active', auth, async (req, res) => {
   try {
-    const result = await withDbLock(async () => {
-      const db = await loadDb();
-      const changed = await expireBlockPuzzleMatches(db);
-      const match = (db.blockPuzzleMatches || []).find(m => m.userId === req.user.id && ['PENDING','PLAYING','SUBMITTED'].includes(m.status));
-      if (changed) await saveDb(db);
-      return blockPuzzlePublicMatch(match, db);
-    });
-    res.json({ match: result });
+    // Read-only endpoint: do not take the global write lock. Expiration is handled
+    // by the player's own timer/submit flow and the cleanup job. This prevents a
+    // background page refresh from blocking a new Pro Match start.
+    const db = await loadDb();
+    const match = (db.blockPuzzleMatches || []).find(m => m.userId === req.user.id && ['PENDING','PLAYING','SUBMITTED'].includes(m.status));
+    res.json({ match: blockPuzzlePublicMatch(match, db) });
   } catch (err) { res.status(503).json({ message: err?.message || 'Matchmaking unavailable.' }); }
 });
 
@@ -901,51 +899,24 @@ app.get('/api/pending-games', auth, async (req, res) => {
 
 app.get('/api/block-puzzle/matches/mine', auth, async (req, res) => {
   try {
-    const result = await withDbLock(async () => {
-      const db = await loadDb();
-      const changed = await expireBlockPuzzleMatches(db);
-      if (changed) await saveDb(db);
-      const matches = (db.blockPuzzleMatches || [])
-        .filter(m => m.userId === req.user.id)
-        .sort((a, b) => (Date.parse(b.createdAt || '') || 0) - (Date.parse(a.createdAt || '') || 0))
-        .map(m => blockPuzzlePublicMatch(m, db));
-      return matches;
-    });
-    res.json({ matches: result });
+    // Read-only: match history polling must never contend with the write lock.
+    const db = await loadDb();
+    const matches = (db.blockPuzzleMatches || [])
+      .filter(m => m.userId === req.user.id)
+      .sort((a, b) => (Date.parse(b.createdAt || '') || 0) - (Date.parse(a.createdAt || '') || 0))
+      .map(m => blockPuzzlePublicMatch(m, db));
+    res.json({ matches });
   } catch (err) { res.status(503).json({ message: err?.message || 'Block Puzzle match history unavailable.' }); }
 });
 
 app.get('/api/block-puzzle/matches/:id/status', auth, async (req, res) => {
   try {
-    const result = await withDbLock(async () => {
-      const db = await loadDb();
-      let changed = await expireBlockPuzzleMatches(db);
-      const session = (db.blockPuzzleMatches || []).find(m => m.id === req.params.id && m.userId === req.user.id);
-      if (!session) return { match: null, user: db.users.find(u => u.id === req.user.id) };
-
-      if (session.duelId) {
-        const duelSessions = db.blockPuzzleMatches.filter(m => m.duelId === session.duelId);
-        // If one player has already finished, keep waiting for the other score.
-        if (duelSessions.length >= Math.max(2, Number(session.playerCount || 2))) {
-          // Every Pro Match player owns an independent 3-minute attempt.
-          // Never use another player's later start time to extend or shorten
-          // this player's clock. A paused player is handled by the pause/resume
-          // endpoint, which moves only that player's gameStartedAt forward.
-          const playerDeadline = Date.parse(session.gameStartedAt || session.startsAt || session.createdAt || '');
-          if (session.status === 'PLAYING' && !session.pauseStartedAt && Number.isFinite(playerDeadline) && playerDeadline + BP_GAME_MS <= Date.now()) {
-            session.status = 'SUBMITTED';
-            session.submittedAt = session.submittedAt || now();
-            session.gameEndedAt = session.gameEndedAt || session.submittedAt;
-            session.score = Number(session.score || 0);
-            changed = true;
-            if (await settleBlockPuzzleDuel(db, session.duelId)) changed = true;
-          }
-        }
-      }
-      if (changed) await saveDb(db);
-      return { match: blockPuzzlePublicMatch(session, db), user: db.users.find(u => u.id === req.user.id) };
-    });
-    res.json({ match: result.match, user: publicUser(result.user) });
+    // Read-only polling endpoint. Do not expire/settle or save here; doing so on
+    // every 1.5s poll made the legacy global lock a bottleneck on Vercel.
+    const db = await loadDb();
+    const session = (db.blockPuzzleMatches || []).find(m => m.id === req.params.id && m.userId === req.user.id);
+    if (!session) return res.json({ match: null, user: publicUser(db.users.find(u => u.id === req.user.id)) });
+    res.json({ match: blockPuzzlePublicMatch(session, db), user: publicUser(db.users.find(u => u.id === req.user.id)) });
   } catch (err) { res.status(503).json({ message: err?.message || 'Match status unavailable.' }); }
 });
 

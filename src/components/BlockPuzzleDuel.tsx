@@ -1195,6 +1195,23 @@ export const BlockPuzzleDuel: React.FC = () => {
               <Pause className="w-5 h-5 fill-current" />
             </button>
 
+            {gameMode === 'duel' && activeMatchId && (
+              <button
+                id="block-bottom-submit-btn"
+                type="button"
+                disabled={isSubmittingScore}
+                onClick={() => {
+                  if (matchTimerRef.current) clearInterval(matchTimerRef.current);
+                  setIsPaused(false);
+                  setScreenState('submit');
+                }}
+                className="h-10 px-3 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 flex items-center justify-center gap-1.5 text-emerald-300 font-black text-[10px] shadow-lg active:scale-95 transition-transform disabled:opacity-50"
+                title="Submit Score Now"
+              >
+                <span>SUBMIT</span>
+              </button>
+            )}
+
             <button
               id="block-bottom-sound-btn"
               type="button"
