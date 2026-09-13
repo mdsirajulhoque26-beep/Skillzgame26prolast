@@ -822,11 +822,11 @@ app.get('/api/cron/expire-pending', async (req, res) => {
 
 app.get('/api/pending-games', auth, async (req, res) => {
   try {
-    const result = await withDbLock(async () => {
-      const db = await loadDb();
-      const changed = await expireBlockPuzzleMatches(db);
-      if (changed) await saveDb(db);
-      const items = [];
+    // Read-only pending list: do not acquire the global write lock here.
+    // This endpoint is polled frequently by the frontend; locking it caused
+    // unnecessary contention with Pro Match start/submit operations.
+    const db = await loadDb();
+    const items = [];
     const uid = String(req.user.id);
 
     // Block Puzzle / Pro Match sessions owned by this player.
@@ -890,8 +890,7 @@ app.get('/api/pending-games', auth, async (req, res) => {
 
       items.sort((a,b) => (Date.parse(b.createdAt || '') || 0) - (Date.parse(a.createdAt || '') || 0));
       return items;
-    });
-    res.json({ items: result });
+    res.json({ items });
   } catch (err) {
     res.status(503).json({ message: err?.message || 'Pending games unavailable.' });
   }
