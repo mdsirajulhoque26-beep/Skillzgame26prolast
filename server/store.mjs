@@ -66,25 +66,71 @@ export async function saveDb(db) {
 }
 
 
-export async function withDbLock(fn, timeoutMs = 7000) {
+// A short, robust distributed lock for the legacy single-document store.
+// This keeps existing routes/behaviour intact while avoiding false "busy" errors
+// caused by MongoDB upsert races between Vercel instances.
+export async function withDbLock(fn, timeoutMs = 20000) {
   const collection = await getCollection();
   const locks = collection.db.collection(LOCK_COLLECTION_NAME);
   const owner = crypto.randomUUID();
   const deadline = Date.now() + timeoutMs;
+  const leaseMs = 60000;
   let acquired = false;
+
   while (Date.now() < deadline) {
     const nowMs = Date.now();
-    const result = await locks.findOneAndUpdate(
-      { _id: 'block-puzzle', $or: [{ expiresAt: { $lte: new Date(nowMs) } }, { expiresAt: { $exists: false } }] },
-      { $set: { owner, expiresAt: new Date(nowMs + 12000) } },
-      { upsert: true, returnDocument: 'after' }
-    ).catch(() => null);
-    if (result?.value?.owner === owner || result?.owner === owner) { acquired = true; break; }
-    await new Promise(r => setTimeout(r, 80));
+    const filter = {
+      _id: 'block-puzzle',
+      $or: [
+        { expiresAt: { $lte: new Date(nowMs) } },
+        { expiresAt: { $exists: false } }
+      ]
+    };
+
+    try {
+      // First try to claim an existing/expired lock without upsert. This avoids
+      // duplicate-key errors when many serverless instances race for the lock.
+      const updated = await locks.updateOne(
+        filter,
+        { $set: { owner, expiresAt: new Date(nowMs + leaseMs) } }
+      );
+
+      if (updated.matchedCount === 1 || updated.modifiedCount === 1) {
+        acquired = true;
+        break;
+      }
+
+      // If the lock document does not exist, exactly one concurrent request can
+      // create it. Everyone else simply retries instead of reporting "busy".
+      try {
+        await locks.insertOne({
+          _id: 'block-puzzle',
+          owner,
+          expiresAt: new Date(nowMs + leaseMs)
+        });
+        acquired = true;
+        break;
+      } catch (err) {
+        if (err?.code !== 11000) throw err;
+      }
+    } catch (err) {
+      // Do not hide real MongoDB/configuration failures behind a misleading
+      // matchmaking message. Only lock contention should reach the retry loop.
+      if (err?.code !== 11000) throw err;
+    }
+
+    await new Promise(r => setTimeout(r, 100));
   }
-  if (!acquired) throw new Error('Matchmaking server is busy. Please try again.');
-  try { return await fn(); }
-  finally { await locks.deleteOne({ _id: 'block-puzzle', owner }).catch(() => {}); }
+
+  if (!acquired) {
+    throw new Error('Matchmaking server is temporarily busy. Please try again in a moment.');
+  }
+
+  try {
+    return await fn();
+  } finally {
+    await locks.deleteOne({ _id: 'block-puzzle', owner }).catch(() => {});
+  }
 }
 
 export function id(prefix='id') { return `${prefix}_${crypto.randomUUID()}`; }
