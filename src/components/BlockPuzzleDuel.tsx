@@ -476,7 +476,9 @@ export const BlockPuzzleDuel: React.FC = () => {
     const createdMatch = (res as any).match;
     const createdMatchId = String(createdMatch?.id || (res as any).matchId || `bp_${Date.now()}`);
     setActiveMatchId(createdMatchId);
-    await refreshBlockPuzzleMatches();
+    // Do not block gameplay on the separate pending-history refresh.
+    // That endpoint is non-critical and may be slow on serverless deployments.
+    refreshBlockPuzzleMatches().catch(() => {});
     const createdStart = createdMatch?.gameStartedAt || createdMatch?.startsAt || (res as any).gameStartedAt || (res as any).startsAt || null;
     setServerGameStartedAt(createdStart);
     if (createdMatch?.opponent) setMatchedOpponent({ name: createdMatch.opponent.name, score: Number(createdMatch.opponent.score || 0), linesCleared: Number(createdMatch.opponent.linesCleared || 0) });
