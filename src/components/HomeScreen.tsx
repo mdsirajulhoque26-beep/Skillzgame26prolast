@@ -200,9 +200,9 @@ export const HomeScreen: React.FC = () => {
       )}
 
       {games.map((game) => {
-        const playable = ['block_puzzle','pool','carrom'].includes(game.gameType);
+        const playable = ['block_puzzle','nut_sort','pool','carrom'].includes(game.gameType);
         return (
-          <div key={game.id} onClick={() => playable && setCurrentTab(game.gameType === 'pool' ? 'pool' : game.gameType === 'carrom' ? 'carrom' : 'block_puzzle')} className={`bg-gradient-to-r from-blue-950/90 via-[#182352] to-purple-950/90 border-2 rounded-2xl p-4 flex items-center justify-between shadow-2xl relative overflow-hidden ${playable ? 'border-cyan-400/80 cursor-pointer hover:border-cyan-300 active:scale-[0.99]' : 'border-indigo-800/70'}`}>
+          <div key={game.id} onClick={() => playable && setCurrentTab(game.gameType === 'pool' ? 'pool' : game.gameType === 'carrom' ? 'carrom' : game.gameType === 'nut_sort' ? 'nut_sort' : 'block_puzzle')} className={`bg-gradient-to-r from-blue-950/90 via-[#182352] to-purple-950/90 border-2 rounded-2xl p-4 flex items-center justify-between shadow-2xl relative overflow-hidden ${playable ? 'border-cyan-400/80 cursor-pointer hover:border-cyan-300 active:scale-[0.99]' : 'border-indigo-800/70'}`}>
             <div className="absolute top-0 right-1/4 w-28 h-28 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none" />
             <div className="flex items-center gap-3.5 z-10 min-w-0">
               <div className="w-13 h-13 shrink-0 rounded-2xl bg-gradient-to-tr from-cyan-400 via-indigo-500 to-purple-500 p-0.5 shadow-lg flex items-center justify-center">

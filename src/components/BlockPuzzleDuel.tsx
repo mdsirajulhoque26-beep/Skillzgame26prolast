@@ -483,12 +483,12 @@ export const BlockPuzzleDuel: React.FC = () => {
     setServerGameStartedAt(createdStart);
     if (createdMatch?.opponent) setMatchedOpponent({ name: createdMatch.opponent.name, score: Number(createdMatch.opponent.score || 0), linesCleared: Number(createdMatch.opponent.linesCleared || 0) });
     if (Number.isFinite(Number(createdMatch?.gameSeed ?? (res as any).gameSeed))) setMatchSeed(Number(createdMatch?.gameSeed ?? (res as any).gameSeed));
-    // Every paid Pro Match starts the player's own 3-minute attempt immediately.
-    // The server timestamp is authoritative for settlement, but the local game
-    // clock must never start with an already-expired timestamp (for example if
-    // the request crossed a slow network or the device clock differs). Start
-    // the client attempt locally with the full 180 seconds.
-    startCountdown('duel', undefined, Number(createdMatch?.gameSeed ?? (res as any).gameSeed) || null);
+    // Every new paid Pro Match starts this player's own attempt immediately.
+    // Do NOT use the server timestamp/countdown here: the server's createdAt can
+    // be a few seconds old by the time the response reaches the phone, and a
+    // background status poll can otherwise re-initialize the game. A fresh paid
+    // attempt always gets a brand-new local 180-second clock.
+    initMatch('duel', difficulty, undefined, Number(createdMatch?.gameSeed ?? (res as any).gameSeed) || null);
   };
 
   // Start Practice Mode (Free)

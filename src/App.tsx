@@ -8,6 +8,7 @@ import { WalletScreen } from './components/WalletScreen';
 import { TransactionsScreen } from './components/TransactionsScreen';
 import { ProfileScreen } from './components/ProfileScreen';
 import { BlockPuzzleDuel } from './components/BlockPuzzleDuel';
+import { NutSortDuel } from './components/NutSortDuel';
 import { AdminPanel } from './components/AdminPanel';
 import { ArcadeOnlineGame } from './components/ArcadeOnlineGame';
 
@@ -45,6 +46,7 @@ const MainLayout: React.FC = () => {
         {currentTab === 'transactions' && <TransactionsScreen />}
         {currentTab === 'profile' && <ProfileScreen />}
         {currentTab === 'block_puzzle' && <BlockPuzzleDuel />}
+        {currentTab === 'nut_sort' && <NutSortDuel />}
         {currentTab === 'pool' && <ArcadeOnlineGame gameType="pool" />}
         {currentTab === 'carrom' && <ArcadeOnlineGame gameType="carrom" />}
       </main>

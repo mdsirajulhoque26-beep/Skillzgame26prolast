@@ -5,6 +5,7 @@ export type TabType =
   | 'profile' 
   | 'upload_result' 
   | 'block_puzzle'
+  | 'nut_sort'
   | 'pool'
   | 'carrom'
   | 'admin';

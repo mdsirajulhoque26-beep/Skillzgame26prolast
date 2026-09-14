@@ -39,7 +39,7 @@ interface AppContextType {
   submitBlockPuzzleResult: (matchId: string, score: number, prizeAmount: number, image?: string) => Promise<{ success: boolean; message: string; match?: any }> ;
   refreshMatches: () => Promise<void>;
   isRefreshing: boolean;
-  startBlockPuzzleMatch: (entryFee: number, prize?: number, playerCount?: number) => Promise<{ success: boolean; message: string; matchId?: string; gameStartedAt?: string | null; startsAt?: string | null; gameSeed?: number | null; playerCount?: number }>;
+  startBlockPuzzleMatch: (entryFee: number, prize?: number, playerCount?: number, gameType?: string) => Promise<{ success: boolean; message: string; matchId?: string; gameStartedAt?: string | null; startsAt?: string | null; gameSeed?: number | null; playerCount?: number }>;
   finishBlockPuzzleMatch: (matchId: string, entryFee: number, won: boolean, prize: number, score: number, isDraw?: boolean) => void;
   refundBlockPuzzleMatch: (matchId: string, entryFee: number, reason?: string) => Promise<{ success: boolean; message: string }>;
   getActiveBlockPuzzleMatch: () => Promise<any | null>;
@@ -317,9 +317,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e: any) { return { success: false, message: e?.message || 'ম্যাচ Resume করা যায়নি।' }; }
   };
 
-  const startBlockPuzzleMatch = async (entryFee: number, prize = 0, playerCount = 2): Promise<{ success: boolean; message: string; matchId?: string; gameStartedAt?: string | null; startsAt?: string | null; gameSeed?: number | null; playerCount?: number }> => {
+  const startBlockPuzzleMatch = async (entryFee: number, prize = 0, playerCount = 2, gameType = 'block_puzzle'): Promise<{ success: boolean; message: string; matchId?: string; gameStartedAt?: string | null; startsAt?: string | null; gameSeed?: number | null; playerCount?: number }> => {
     try {
-      const data = await backendApi.startBlockPuzzleMatch(entryFee, prize, playerCount);
+      const data = await backendApi.startBlockPuzzleMatch(entryFee, prize, playerCount, gameType);
       applyApiUser(data.user);
       const tx = await backendApi.transactions();
       setTransactions(tx.transactions as Transaction[]);

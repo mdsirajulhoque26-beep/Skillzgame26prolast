@@ -301,7 +301,7 @@ function blockPuzzlePublicMatch(session, db) {
   const group = session.duelId ? (db.blockPuzzleMatches || []).filter(m => m.duelId === session.duelId && !m.tournamentId) : [session];
   const participants = group.map(m => ({ userId:m.userId, name:m.userName, score:m.score ?? null, status:m.status, submitted: Boolean(m.submittedAt) }));
   return {
-    id: session.id, duelId: session.duelId || null, tournamentId: session.tournamentId || null, userId: session.userId, userName: session.userName, playerCount: Number(session.playerCount || 2), playersJoined: participants.length, participants,
+    id: session.id, gameType: session.gameType || 'block_puzzle', duelId: session.duelId || null, tournamentId: session.tournamentId || null, userId: session.userId, userName: session.userName, playerCount: Number(session.playerCount || 2), playersJoined: participants.length, participants,
     entryFee: session.entryFee, prizeAmount: session.prizeAmount, status: session.status,
     createdAt: session.createdAt, pendingUntil: session.pendingUntil || null, matchedAt: session.matchedAt || null,
     liveStateVersion: BP_PROTOCOL_VERSION,
@@ -342,7 +342,7 @@ async function settleBlockPuzzleDuel(db, duelId) {
         winner.winningBalance = money(Number(winner.winningBalance || 0) + prize);
         winner.totalWinnings = money(Number(winner.totalWinnings || 0) + prize);
         winner.matchesWon = Number(winner.matchesWon || 0) + 1;
-        db.transactions.unshift(makeTransaction(winner.id, 'match_win', prize, 'Multiplayer Pro Match Win', `Rank #1 • ${required} Players`, 'match', { matchId: duelId, gameType: 'block_puzzle', playerCount: required }));
+        db.transactions.unshift(makeTransaction(winner.id, 'match_win', prize, 'Multiplayer Pro Match Win', `Rank #1 • ${required} Players`, 'match', { matchId: duelId, gameType: sessions[0]?.gameType || 'block_puzzle', playerCount: required }));
       }
     }
   } else {
@@ -351,7 +351,7 @@ async function settleBlockPuzzleDuel(db, duelId) {
       if (u && !session.refunded) {
         u.gamingBalance = money(Number(u.gamingBalance || 0) + Number(session.entryFee || 0));
         session.refunded = true;
-        db.transactions.unshift(makeTransaction(u.id, 'refund', Number(session.entryFee || 0), 'Multiplayer Pro Match Draw Refund', `Draw • ${required} Players`, 'match', { matchId: duelId, gameType: 'block_puzzle', playerCount: required }));
+        db.transactions.unshift(makeTransaction(u.id, 'refund', Number(session.entryFee || 0), 'Multiplayer Pro Match Draw Refund', `Draw • ${required} Players`, 'match', { matchId: duelId, gameType: sessions[0]?.gameType || 'block_puzzle', playerCount: required }));
       }
     }
   }
@@ -427,7 +427,7 @@ async function expireBlockPuzzleMatches(db) {
     const u = db.users.find(x => x.id === session.userId);
     if (u) {
       u.gamingBalance = money(Number(u.gamingBalance || 0) + Number(session.entryFee || 0));
-      db.transactions.unshift(makeTransaction(u.id, 'refund', Number(session.entryFee || 0), 'Block Puzzle Entry Refund', `No opponent within 3 hours • Match #${session.id.slice(-6)}`, 'match', { matchId: session.id, gameType: 'block_puzzle' }));
+      db.transactions.unshift(makeTransaction(u.id, 'refund', Number(session.entryFee || 0), `${session.gameType === 'nut_sort' ? 'Nut Sort' : 'Block Puzzle'} Entry Refund`, `No opponent within 3 hours • Match #${session.id.slice(-6)}`, 'match', { matchId: session.id, gameType: session.gameType || 'block_puzzle' }));
     }
     session.status = 'REFUNDED';
     session.refunded = true;
@@ -438,11 +438,11 @@ async function expireBlockPuzzleMatches(db) {
   return changed;
 }
 
-function findJoinableBlockPuzzleMatch(db, session, entryFee, prizeAmount, playerCount) {
+function findJoinableBlockPuzzleMatch(db, session, entryFee, prizeAmount, playerCount, gameType = 'block_puzzle') {
   const required = Math.max(2, Number(playerCount || 2));
   const candidates = (db.blockPuzzleMatches || []).filter(m =>
     m.id !== session.id && !m.tournamentId && !m.refunded &&
-    Number(m.entryFee) === entryFee && Number(m.prizeAmount) === prizeAmount &&
+    String(m.gameType || 'block_puzzle') === gameType && Number(m.entryFee) === entryFee && Number(m.prizeAmount) === prizeAmount &&
     Math.max(2, Number(m.playerCount || 2)) === required && m.userId !== session.userId
   );
   // Prefer an existing group that is not full, then a fresh solo player.
@@ -697,15 +697,28 @@ app.post('/api/block-puzzle/matches/start', auth, async (req, res) => {
     const result = await withDbLock(async () => {
       const db = await loadDb();
       await expireBlockPuzzleMatches(db);
+      const requestedGameType = safeText(req.body?.gameType || 'block_puzzle', 40).toLowerCase();
+      const gameType = requestedGameType === 'nut_sort' ? 'nut_sort' : 'block_puzzle';
       const entryFee = money(Number(req.body?.entryFee));
       const requestedPlayerCount = Math.floor(Number(req.body?.playerCount || 2));
       const playerCount = requestedPlayerCount === 3 || requestedPlayerCount === 5 || requestedPlayerCount === 7 || requestedPlayerCount === 10 ? requestedPlayerCount : 2;
       if (!Number.isFinite(entryFee) || !Number.isInteger(entryFee) || entryFee <= 0) throw Object.assign(new Error('Invalid Block Puzzle entry fee.'), { statusCode: 400 });
-      const configuredFees = proMatchFees(db);
       const requestedPrize = money(Math.max(0, Number(req.body?.prizeAmount) || 0));
+      const configuredFees = proMatchFees(db);
       const feeIndex = configuredFees.findIndex(fee => Math.abs(fee - entryFee) < 0.000001);
-      const prizeAmount = playerCount > 2 ? requestedPrize : (feeIndex >= 0 ? PRO_MATCH_PRIZES[feeIndex] : null);
-      if (prizeAmount == null || prizeAmount <= 0) throw Object.assign(new Error('এই Pro Match entry fee বর্তমানে উপলব্ধ নয়।'), { statusCode: 400 });
+      let prizeAmount;
+      if (gameType === 'nut_sort') {
+        const game = (db.games || []).find(g => g.gameType === 'nut_sort');
+        if (!game || game.active === false) throw Object.assign(new Error('Nut Sort বর্তমানে Active নয়।'), { statusCode: 409 });
+        const gameFee = money(Number(game.entryFee || 0));
+        const gamePrize = money(Number(game.prizeAmount || 0));
+        if (gameFee <= 0 || Math.abs(gameFee - entryFee) > 0.000001) throw Object.assign(new Error('Nut Sort-এর Entry Fee বর্তমানে Admin সেটিংসের সাথে মিলছে না।'), { statusCode: 400 });
+        prizeAmount = gamePrize > 0 ? gamePrize : requestedPrize;
+        if (prizeAmount <= 0) throw Object.assign(new Error('Nut Sort Prize সেট করা নেই।'), { statusCode: 400 });
+      } else {
+        prizeAmount = playerCount > 2 ? requestedPrize : (feeIndex >= 0 ? PRO_MATCH_PRIZES[feeIndex] : null);
+        if (prizeAmount == null || prizeAmount <= 0) throw Object.assign(new Error('এই Pro Match entry fee বর্তমানে উপলব্ধ নয়।'), { statusCode: 400 });
+      }
       if (Number(req.user.gamingBalance) < entryFee) throw Object.assign(new Error('অপর্যাপ্ত গেমিং ব্যালেন্স! দয়া করে ডিপোজিট করুন।'), { statusCode: 400 });
 
       // Pro Match is asynchronous: the player may play immediately after paying.
@@ -716,6 +729,7 @@ app.post('/api/block-puzzle/matches/start', auth, async (req, res) => {
       const pendingUntil = new Date(Date.parse(createdAt) + BP_PENDING_MS).toISOString();
       const session = {
         id: id('bp'),
+        gameType,
         gameSeed: crypto.randomInt(1, 2147483646),
         moveIndex: 0,
         liveState: null,
@@ -728,9 +742,9 @@ app.post('/api/block-puzzle/matches/start', auth, async (req, res) => {
       req.user.matchesPlayed = Number(req.user.matchesPlayed || 0) + 1;
       db.users = db.users.map(u => u.id === req.user.id ? req.user : u);
       db.blockPuzzleMatches = [session, ...(db.blockPuzzleMatches || [])];
-      db.transactions.unshift(makeTransaction(req.user.id, 'match_loss', -entryFee, 'Block Puzzle Entry', `Block Puzzle • Match #${session.id.slice(-6)}`, 'match', { matchId: session.id, gameType: 'block_puzzle' }));
+      db.transactions.unshift(makeTransaction(req.user.id, 'match_loss', -entryFee, `${gameType === 'nut_sort' ? 'Nut Sort' : 'Block Puzzle'} Entry`, `${gameType === 'nut_sort' ? 'Nut Sort 1v1' : 'Block Puzzle'} • Match #${session.id.slice(-6)}`, 'match', { matchId: session.id, gameType }));
 
-      const join = findJoinableBlockPuzzleMatch(db, session, entryFee, prizeAmount, playerCount);
+      const join = findJoinableBlockPuzzleMatch(db, session, entryFee, prizeAmount, playerCount, gameType);
       if (join) {
         const target = join.target;
         const groupId = target.duelId || id('bpgroup');
@@ -829,18 +843,27 @@ app.get('/api/pending-games', auth, async (req, res) => {
     const items = [];
     const uid = String(req.user.id);
 
-    // Block Puzzle / Pro Match sessions owned by this player.
+    // Block Puzzle / Pro Match sessions owned by this player. Keep completed
+    // duels in this same history feed so an older pending match does not vanish
+    // after the opponent joins and the result is settled.
     for (const m of (db.blockPuzzleMatches || [])) {
       if (String(m.userId) !== uid) continue;
-      if (!['PENDING','PLAYING','SUBMITTED'].includes(String(m.status))) continue;
+      if (m.refunded || !['PENDING','PLAYING','SUBMITTED','COMPLETED'].includes(String(m.status))) continue;
       const tournament = m.tournamentId ? (db.tournaments || []).find(t => t.id === m.tournamentId) : null;
+      let opponent = null;
+      if (m.duelId) {
+        const opp = (db.blockPuzzleMatches || []).find(x => x.duelId === m.duelId && String(x.userId) !== uid && !x.refunded);
+        const oppUser = opp ? (db.users || []).find(u => String(u.id) === String(opp.userId)) : null;
+        if (opp) opponent = { name: opp.userName || oppUser?.name || 'Opponent', score: opp.score == null ? null : Number(opp.score || 0), status: String(opp.status || '') };
+      }
       items.push({
         id: String(m.id), type: tournament ? 'TOURNAMENT_MATCH' : 'PRO_MATCH',
-        gameType: 'block_puzzle', title: tournament?.name || 'Pro Match',
-        status: String(m.status), entryFee: Number(m.entryFee || 0), prizeAmount: Number(m.prizeAmount || 0),
+        gameType: String(m.gameType || 'block_puzzle'), title: tournament?.name || (m.gameType === 'nut_sort' ? 'Nut Sort 1v1' : 'Pro Match'),
+        status: String(m.status), outcome: m.outcome || null,
+        entryFee: Number(m.entryFee || 0), prizeAmount: Number(m.prizeAmount || 0),
         score: Number(m.score || 0), linesCleared: Number(m.linesCleared || 0), bestCombo: Number(m.bestCombo || 0),
-        opponent: m.opponent ? { name: m.opponent.name, score: Number(m.opponent.score || 0) } : null,
-        createdAt: m.createdAt || null, matchId: String(m.id), tournamentId: m.tournamentId || null,
+        opponent, createdAt: m.createdAt || null, submittedAt: m.submittedAt || null, settledAt: m.settledAt || null,
+        matchId: String(m.id), tournamentId: m.tournamentId || null,
       });
     }
 
@@ -1038,7 +1061,7 @@ app.post('/api/block-puzzle/matches/:id/refund', auth, async (req, res) => {
       if (session.status !== 'PENDING') throw Object.assign(new Error('এই ম্যাচটি এখন আর রিফান্ড করা যাবে না।'), { statusCode: 409 });
       const u = db.users.find(x => x.id === req.user.id); u.gamingBalance = money(Number(u.gamingBalance || 0) + Number(session.entryFee || 0));
       session.status = 'REFUNDED'; session.refunded = true; session.refundReason = safeText(req.body?.reason, 200) || 'Player cancelled matchmaking'; session.refundedAt = now();
-      db.transactions.unshift(makeTransaction(u.id, 'refund', Number(session.entryFee), 'Block Puzzle Entry Refund', `${session.refundReason} • Match #${session.id.slice(-6)}`, 'match', { matchId: session.id, gameType: 'block_puzzle' }));
+      db.transactions.unshift(makeTransaction(u.id, 'refund', Number(session.entryFee), `${session.gameType === 'nut_sort' ? 'Nut Sort' : 'Block Puzzle'} Entry Refund`, `${session.refundReason} • Match #${session.id.slice(-6)}`, 'match', { matchId: session.id, gameType: session.gameType || 'block_puzzle' }));
       await saveDb(db); return { session, user: u };
     });
     res.json({ match: blockPuzzlePublicMatch(result.session, { users: [result.user] }), user: publicUser(result.user) });
