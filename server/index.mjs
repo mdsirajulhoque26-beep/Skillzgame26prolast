@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import crypto from 'node:crypto';
-import { loadDb, saveDb, pingDb, id, now, hashPassword, verifyPassword, publicUser, withDbLock } from './store.mjs';
+import { loadDb, saveDb, saveDbPartial, pingDb, id, now, hashPassword, verifyPassword, publicUser, withDbLock } from './store.mjs';
 
 const app = express();
 app.disable('x-powered-by');
@@ -1082,7 +1082,7 @@ app.post('/api/block-puzzle/matches/:id/submit', auth, async (req, res) => {
       }
       if (session.duelId) await settleBlockPuzzleDuel(db, session.duelId);
       maybeAwardReferralBonus(db, session.userId);
-      await saveDb(db);
+      await saveDbPartial(db, ['blockPuzzleMatches', 'users', 'transactions', 'tournaments', 'tournamentEntries', 'referrals']);
       return { match: blockPuzzlePublicMatch(session, db), user: db.users.find(u => u.id === req.user.id) };
     });
     res.json({ match: result.match, user: publicUser(result.user) });
@@ -1468,7 +1468,7 @@ app.post('/api/result-submissions', auth, async (req, res) => {
     if ((req.db.resultSubmissions || []).some(s => s.gameType === 'block_puzzle' && s.matchId === session.id && s.userId === req.user.id && s.status === 'PENDING')) return res.status(409).json({ message: 'এই Block Puzzle স্কোরটি ইতিমধ্যে যাচাইয়ের অপেক্ষায় আছে।' });
     session.status = 'SUBMITTED'; session.submittedAt = now(); session.score = Math.floor(score); session.linesCleared = linesCleared; session.bestCombo = bestCombo;
     const r = { id: id('res'), userId: req.user.id, userName: req.user.name, userPhone: req.user.phone, gameType: 'block_puzzle', matchId: session.id, matchNo: undefined, roomCode: undefined, score: Math.floor(score), entryFee: money(session.entryFee), linesCleared, bestCombo, imageUrl: imageUrl || undefined, prizeAmount: money(session.prizeAmount), status: 'PENDING', submittedAt: session.submittedAt };
-    req.db.resultSubmissions.unshift(r); await saveDb(req.db); return res.status(201).json({ submission: r, match: session });
+    req.db.resultSubmissions.unshift(r); await saveDbPartial(req.db, ['resultSubmissions']); return res.status(201).json({ submission: r, match: session });
   }
 
   if (!roomCode) return res.status(400).json({ message: 'Room ID is required.' });
@@ -1477,7 +1477,7 @@ app.post('/api/result-submissions', auth, async (req, res) => {
   if (!(match.joinedPlayers || []).some(p => p.userId === req.user.id)) return res.status(403).json({ message: 'You did not join this match.' });
   if ((req.db.resultSubmissions || []).some(s => s.matchId === match.id && s.userId === req.user.id && s.status === 'PENDING')) return res.status(409).json({ message: 'A result is already pending for this match.' });
   const r = { id: id('res'), userId: req.user.id, userName: req.user.name, userPhone: req.user.phone, ludoKingName: req.user.ludoKingName, matchId: match.id, matchNo: match.matchNo, roomCode, imageUrl: imageUrl || undefined, prizeAmount: money(match.totalPrize), status: 'PENDING', submittedAt: now() };
-  req.db.resultSubmissions.unshift(r); await saveDb(req.db); res.status(201).json({ submission: r });
+  req.db.resultSubmissions.unshift(r); await saveDbPartial(req.db, ['resultSubmissions']); res.status(201).json({ submission: r });
 });
 
 app.patch('/api/result-submissions/:id', auth, admin, async (req, res) => {

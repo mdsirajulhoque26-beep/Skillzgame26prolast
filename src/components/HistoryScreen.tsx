@@ -42,11 +42,16 @@ export const HistoryScreen: React.FC = () => {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>('ALL');
+  const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
-      const data = await getMyPendingGames();
+      const data = await Promise.race([
+        getMyPendingGames(),
+        new Promise<any[]>((_, reject) => setTimeout(() => reject(new Error('History request timeout')), 12000)),
+      ]);
       const seen = new Map<string, any>();
       for (const item of data || []) {
         const id = String(item?.matchId || item?.id || '');
@@ -56,14 +61,21 @@ export const HistoryScreen: React.FC = () => {
     } catch (e) {
       console.warn('History load failed', e);
       setItems([]);
+      setError('History লোড করা যাচ্ছে না। আবার চেষ্টা করুন।');
     } finally {
       setLoading(false);
     }
   }, [getMyPendingGames]);
 
+  // AppContext refreshes the user every few seconds. Do not restart the
+  // history request every time the context object/function identity changes;
+  // doing so kept this screen stuck on the loading spinner on slower APIs.
   useEffect(() => {
-    load();
-  }, [load]);
+    void load();
+    // Intentionally run once when the History screen mounts. The refresh
+    // button calls load() explicitly when the user wants a fresh result.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const completed = useMemo(() => {
     return items
@@ -134,6 +146,12 @@ export const HistoryScreen: React.FC = () => {
         <div className="px-4 py-16 text-center text-sm text-slate-500">
           <RefreshCw className="w-8 h-8 mx-auto animate-spin text-cyan-400" />
           <p className="mt-3">History লোড হচ্ছে…</p>
+        </div>
+      ) : error ? (
+        <div className="mx-3 mt-4 rounded-2xl border border-red-900/60 bg-[#111935] px-5 py-14 text-center">
+          <RefreshCw className="w-12 h-12 mx-auto text-red-400" />
+          <div className="mt-3 font-black text-red-300">{error}</div>
+          <button onClick={load} className="mt-4 rounded-xl bg-cyan-400 px-4 py-2 text-xs font-black text-slate-950">আবার চেষ্টা করুন</button>
         </div>
       ) : visible.length === 0 ? (
         <div className="mx-3 mt-4 rounded-2xl border border-indigo-900/60 bg-[#111935] px-5 py-14 text-center">

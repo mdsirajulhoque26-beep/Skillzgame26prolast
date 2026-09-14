@@ -398,8 +398,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const data = await backendApi.submitBlockPuzzleMatch(matchId, score, 0, 0);
       if (data.user) applyApiUser(data.user);
-      const tx = await backendApi.transactions();
-      setTransactions(tx.transactions as Transaction[]);
+      // Do not block the player's result screen on a second transactions request.
+      // The score submission response is already authoritative; transaction history
+      // can refresh in the background without making the player wait.
+      void backendApi.transactions()
+        .then(tx => setTransactions(tx.transactions as Transaction[]))
+        .catch(() => {});
       return { success: true, message: 'স্কোর সার্ভারে জমা হয়েছে।', match: data.match };
     } catch (e: any) {
       return { success: false, message: e?.message || 'স্কোর জমা দেওয়া যায়নি।' };

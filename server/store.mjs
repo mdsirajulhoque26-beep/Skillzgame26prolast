@@ -77,6 +77,25 @@ export async function saveDb(db) {
   );
 }
 
+// Fast partial persistence for latency-sensitive match actions. The legacy
+// store keeps one Mongo document, so rewriting the entire app state on every
+// score submission can become slow as history/transactions grow. These updates
+// touch only the arrays that the current action changed.
+export async function saveDbPartial(db, keys = []) {
+  const collection = await getCollection();
+  const uniqueKeys = [...new Set((Array.isArray(keys) ? keys : []).filter(Boolean))];
+  if (!uniqueKeys.length) return;
+  const $set = { updatedAt: new Date() };
+  for (const key of uniqueKeys) {
+    if (Object.prototype.hasOwnProperty.call(db, key)) $set[`data.${key}`] = db[key];
+  }
+  await collection.updateOne(
+    { _id: STATE_ID },
+    { $set },
+    { upsert: true }
+  );
+}
+
 
 // A short, robust distributed lock for the legacy single-document store.
 // This keeps existing routes/behaviour intact while avoiding false "busy" errors
