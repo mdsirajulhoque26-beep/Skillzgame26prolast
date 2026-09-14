@@ -484,8 +484,11 @@ export const BlockPuzzleDuel: React.FC = () => {
     if (createdMatch?.opponent) setMatchedOpponent({ name: createdMatch.opponent.name, score: Number(createdMatch.opponent.score || 0), linesCleared: Number(createdMatch.opponent.linesCleared || 0) });
     if (Number.isFinite(Number(createdMatch?.gameSeed ?? (res as any).gameSeed))) setMatchSeed(Number(createdMatch?.gameSeed ?? (res as any).gameSeed));
     // Every paid Pro Match starts the player's own 3-minute attempt immediately.
-    // An opponent is optional and can join later; never wait for matchmaking.
-    startCountdown('duel', createdStart || new Date().toISOString(), Number(createdMatch?.gameSeed) || null);
+    // The server timestamp is authoritative for settlement, but the local game
+    // clock must never start with an already-expired timestamp (for example if
+    // the request crossed a slow network or the device clock differs). Start
+    // the client attempt locally with the full 180 seconds.
+    startCountdown('duel', undefined, Number(createdMatch?.gameSeed ?? (res as any).gameSeed) || null);
   };
 
   // Start Practice Mode (Free)
@@ -536,10 +539,14 @@ export const BlockPuzzleDuel: React.FC = () => {
     setDragPointer(null);
     setIsOutOfMoves(false);
     setIsPaused(false);
+    // For a fresh client game always start from the full 3-minute local clock.
+    // Rehydrated/tournament matches may still use their server start timestamp.
     const startMs = serverStartAt ? Date.parse(serverStartAt) : Date.now();
-    const initialRemaining = (mode === 'duel' || mode === 'tournament') && Number.isFinite(startMs)
-      ? Math.max(0, Math.ceil((startMs + TOTAL_MATCH_TIME * 1000 - Date.now()) / 1000))
-      : TOTAL_MATCH_TIME;
+    const initialRemaining = mode === 'duel' && !serverStartAt
+      ? TOTAL_MATCH_TIME
+      : ((mode === 'duel' || mode === 'tournament') && Number.isFinite(startMs)
+        ? Math.max(0, Math.ceil((startMs + TOTAL_MATCH_TIME * 1000 - Date.now()) / 1000))
+        : TOTAL_MATCH_TIME);
     setRemainingTime(initialRemaining);
     // Keep an already matched opponent visible when a paired match starts.
     setOpponentLiveBoard(createEmptyBoard());
