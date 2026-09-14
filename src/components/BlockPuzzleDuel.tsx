@@ -161,6 +161,18 @@ export const BlockPuzzleDuel: React.FC = () => {
     return () => window.clearInterval(timer);
   }, [refreshBlockPuzzleMatches]);
 
+  // Home Quick Menu can open the shared completed-match History screen directly.
+  useEffect(() => {
+    if (sessionStorage.getItem('skillz_open_block_history') !== '1') return;
+    sessionStorage.removeItem('skillz_open_block_history');
+    let cancelled = false;
+    (async () => {
+      try { await refreshBlockPuzzleMatches(); } catch {}
+      if (!cancelled) setShowHistory(true);
+    })();
+    return () => { cancelled = true; };
+  }, [refreshBlockPuzzleMatches]);
+
   useEffect(() => {
     const completed = pendingMatches.filter((m: any) => m.status === 'WON' || m.status === 'LOST' || m.status === 'DRAW' || m.status === 'TOURNAMENT');
     const won = completed.filter((m: any) => m.status === 'WON');

@@ -255,7 +255,7 @@ export const HomeScreen: React.FC = () => {
 
         <button
           id="quick-history-btn"
-          onClick={() => { sessionStorage.setItem('skillz_open_block_history', '1'); setCurrentTab('block_puzzle'); }}
+          onClick={() => setCurrentTab('history')}
           className="bg-[#121935] hover:bg-[#182145] border border-indigo-900/60 rounded-xl p-2.5 flex flex-col items-center text-center transition-colors"
         >
           <div className="w-8 h-8 rounded-full bg-cyan-400/10 flex items-center justify-center text-cyan-400 mb-1">

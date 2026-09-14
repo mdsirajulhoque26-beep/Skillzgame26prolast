@@ -6,6 +6,7 @@ import { AuthScreen } from './components/AuthScreen';
 import { HomeScreen } from './components/HomeScreen';
 import { WalletScreen } from './components/WalletScreen';
 import { TransactionsScreen } from './components/TransactionsScreen';
+import { HistoryScreen } from './components/HistoryScreen';
 import { ProfileScreen } from './components/ProfileScreen';
 import { BlockPuzzleDuel } from './components/BlockPuzzleDuel';
 import { NutSortDuel } from './components/NutSortDuel';
@@ -44,6 +45,7 @@ const MainLayout: React.FC = () => {
         {currentTab === 'home' && <HomeScreen />}
         {currentTab === 'wallet' && <WalletScreen />}
         {currentTab === 'transactions' && <TransactionsScreen />}
+        {currentTab === 'history' && <HistoryScreen />}
         {currentTab === 'profile' && <ProfileScreen />}
         {currentTab === 'block_puzzle' && <BlockPuzzleDuel />}
         {currentTab === 'nut_sort' && <NutSortDuel />}

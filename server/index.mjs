@@ -736,7 +736,8 @@ app.post('/api/block-puzzle/matches/start', auth, async (req, res) => {
       const gameType = requestedGameType === 'nut_sort' ? 'nut_sort' : 'block_puzzle';
       const entryFee = money(Number(req.body?.entryFee));
       const requestedPlayerCount = Math.floor(Number(req.body?.playerCount || 2));
-      const playerCount = requestedPlayerCount === 3 || requestedPlayerCount === 5 || requestedPlayerCount === 7 || requestedPlayerCount === 10 ? requestedPlayerCount : 2;
+      // 2-player remains the legacy/default duel. Any configured multiplayer count >=3 is allowed.
+      const playerCount = requestedPlayerCount >= 3 && requestedPlayerCount <= 1000 ? requestedPlayerCount : 2;
       if (!Number.isFinite(entryFee) || !Number.isInteger(entryFee) || entryFee <= 0) throw Object.assign(new Error('Invalid Block Puzzle entry fee.'), { statusCode: 400 });
       const requestedPrize = money(Math.max(0, Number(req.body?.prizeAmount) || 0));
       const configuredFees = proMatchFees(db);
@@ -1572,7 +1573,6 @@ app.patch('/api/settings', auth, admin, async (req, res) => {
   for (const key of ['bkash','bkashAgent','nagad','rocket','upay','binanceUsdt','bkashAgentEnabled','binanceUsdtEnabled','depositBkashEnabled','depositBkashAgentEnabled','depositNagadEnabled','depositRocketEnabled','depositUpayEnabled','depositBinanceUsdtEnabled','withdrawBkashEnabled','withdrawNagadEnabled','withdrawRocketEnabled','withdrawUpayEnabled','withdrawBinanceUsdtEnabled','whatsappSupport','telegramLink','marqueeNotice','popupNoticeTitle','popupNoticeText']) { if (b[key] !== undefined) paymentPatch[key] = typeof b[key] === 'string' ? safeText(b[key], 5000) : Boolean(b[key]); }
     if (b.multiplayerProMatches !== undefined) {
     if (!Array.isArray(b.multiplayerProMatches)) return res.status(400).json({message:'Multiplayer Pro Match settings invalid.'});
-    const allowed = new Set([3,5,7,10]);
     const rows = b.multiplayerProMatches.map((x,i)=>{
       const players = Math.floor(Number(x?.players));
       const legacyPrize = money(Math.max(0, Number(x?.prizeAmount)||0));
@@ -1584,7 +1584,7 @@ app.patch('/api/settings', auth, admin, async (req, res) => {
         active: Boolean(x?.active), showOnHome: x?.showOnHome !== false, displayOrder: Number.isFinite(Number(x?.displayOrder)) ? Number(x.displayOrder) : i+1, name: safeText(x?.name || `Multiplayer Pro Match • ${players} Players`, 100)
       };
     });
-    if (rows.length !== 4 || rows.some(x=>!allowed.has(x.players)||x.entryFee<=0||!x.prizes.length||x.prizes.length>x.players||x.prizes.reduce((a,v)=>a+v,0)>money(x.entryFee*x.players)) || new Set(rows.map(x=>x.players)).size !== rows.length) return res.status(400).json({message:'3, 5, 7, 10 player-এর জন্য Entry Fee দিন এবং Prize Distribution-এ 1 থেকে ওই player count পর্যন্ত rank prize দিন। মোট prize মোট entry fee-এর বেশি হতে পারবে না।'});
+    if (rows.length < 1 || rows.some(x=>!Number.isInteger(x.players)||x.players<3||x.players>1000||x.entryFee<=0||!x.prizes.length||x.prizes.length>x.players||x.prizes.reduce((a,v)=>a+v,0)>money(x.entryFee*x.players)) || new Set(rows.map(x=>x.players)).size !== rows.length) return res.status(400).json({message:'প্রতিটি Multiplayer Player Count 3 থেকে 1000-এর মধ্যে আলাদা পূর্ণ সংখ্যা হতে হবে। Entry Fee দিন এবং Prize Distribution-এ 1 থেকে ওই player count পর্যন্ত rank prize দিন। মোট prize মোট entry fee-এর বেশি হতে পারবে না।'});
     paymentPatch.multiplayerProMatches = rows.sort((a,b)=>a.displayOrder-b.displayOrder);
   }
 if (b.proMatchFees !== undefined) { const fees = Array.isArray(b.proMatchFees) ? b.proMatchFees.map(Number) : []; if (fees.length !== 6 || fees.some(n => !Number.isFinite(n) || n <= 0) || new Set(fees.map(n => n.toFixed(2))).size !== 6) return res.status(400).json({ message: 'Pro Match entry fee অবশ্যই ৬টি আলাদা positive amount হতে হবে।' }); paymentPatch.proMatchFees = fees.map(n => money(n)); }

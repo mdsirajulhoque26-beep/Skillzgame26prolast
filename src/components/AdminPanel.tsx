@@ -223,6 +223,7 @@ export const AdminPanel: React.FC = () => {
   // Editable settings form
   const [settingsForm, setSettingsForm] = useState(paymentSettings);
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
 
   useEffect(() => {
     setSettingsForm(paymentSettings);
@@ -239,9 +240,91 @@ export const AdminPanel: React.FC = () => {
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    const ok = await updatePaymentSettings(settingsForm);
-    setSettingsSaved(ok);
-    setTimeout(() => setSettingsSaved(false), 2500);
+
+    // Normalize every configured multiplayer row. Admin may add any player count >= 3.
+
+    // This also prevents a stale/partial settings object from making the Save button
+    // appear to do nothing.
+    const defaultMultiplayer = [
+      { id:'mp_3', players:3, entryFee:20, prizeAmount:40, prizes:[40], active:false, showOnHome:true, displayOrder:1 },
+      { id:'mp_5', players:5, entryFee:30, prizeAmount:80, prizes:[80], active:false, showOnHome:true, displayOrder:2 },
+      { id:'mp_7', players:7, entryFee:60, prizeAmount:160, prizes:[160], active:false, showOnHome:true, displayOrder:3 },
+      { id:'mp_10', players:10, entryFee:120, prizeAmount:300, prizes:[300], active:false, showOnHome:true, displayOrder:4 },
+    ];
+    const rawRows = Array.isArray(settingsForm.multiplayerProMatches) && settingsForm.multiplayerProMatches.length
+      ? settingsForm.multiplayerProMatches
+      : defaultMultiplayer;
+    const multiplayerProMatches = rawRows.map((found:any, i:number) => {
+      const players = Math.floor(Number(found?.players));
+      const prizes = (Array.isArray(found?.prizes) ? found.prizes : [found?.prizeAmount])
+        .map((n:any) => Number(n)).filter((n:number) => Number.isFinite(n) && n > 0);
+      return {
+        ...found,
+        id: found?.id || `mp_${players || i + 1}`,
+        players,
+        entryFee: Number(found?.entryFee),
+        prizeAmount: Number(prizes[0] || 0),
+        prizes,
+        active: Boolean(found?.active),
+        showOnHome: found?.showOnHome !== false,
+        displayOrder: i + 1,
+        name: found?.name || `Multiplayer Pro Match • ${players} Players`,
+      };
+    });
+
+    if (!multiplayerProMatches.length) {
+      showToast('কমপক্ষে ১টি Multiplayer Player Count যোগ করুন।', 'error');
+      return;
+    }
+
+
+    // Validate the multiplayer values on the client first, so an invalid row
+    // cannot silently make the backend reject the entire settings save.
+    for (const row of multiplayerProMatches) {
+      const totalPrize = row.prizes.reduce((sum:number, n:number) => sum + Number(n || 0), 0);
+      if (!Number.isInteger(row.players) || row.players < 3 || row.players > 1000) {
+        showToast('Player Count অবশ্যই 3 থেকে 1000-এর মধ্যে পূর্ণ সংখ্যা হতে হবে।', 'error');
+        return;
+      }
+      if (!Number.isFinite(row.entryFee) || row.entryFee <= 0) {
+        showToast(`${row.players} Players-এর Entry Fee ০-এর বেশি হতে হবে।`, 'error');
+        return;
+      }
+      if (!row.prizes.length || row.prizes.length > row.players || row.prizes.some((n:number) => !Number.isFinite(n) || n <= 0)) {
+        showToast(`${row.players} Players-এর Prize Distribution ঠিক করুন।`, 'error');
+        return;
+      }
+      if (totalPrize > row.entryFee * row.players) {
+        showToast(`${row.players} Players-এর মোট Prize মোট Entry Fee-এর বেশি হতে পারবে না।`, 'error');
+        return;
+      }
+    }
+
+    if (new Set(multiplayerProMatches.map((r:any) => r.players)).size !== multiplayerProMatches.length) {
+      showToast('একই Player Count একাধিকবার রাখা যাবে না।', 'error');
+      return;
+    }
+
+    const payload = { ...settingsForm, multiplayerProMatches };
+    setSettingsSaving(true);
+    try {
+      const ok = await updatePaymentSettings(payload);
+      setSettingsSaved(ok);
+      if (ok) {
+        showToast('সেটিংস সেভ হয়েছে। Home Screen আপডেট করা হচ্ছে।');
+        // After a successful save, immediately return to Home so the newly active
+        // multiplayer cards are visible without a manual refresh.
+        setTimeout(() => {
+          setSettingsSaved(false);
+          setCurrentTab('home');
+        }, 600);
+      } else {
+        showToast('সেটিংস সেভ করা যায়নি। Admin login/API connection পরীক্ষা করুন।', 'error');
+        setTimeout(() => setSettingsSaved(false), 2500);
+      }
+    } finally {
+      setSettingsSaving(false);
+    }
   };
 
   const handleCreateMatchSubmit = async (e: React.FormEvent) => {
@@ -1325,10 +1408,9 @@ export const AdminPanel: React.FC = () => {
                   <label className="block text-xs text-slate-300 font-semibold mb-1">bKash নম্বর (Personal)</label>
                   <input
                     type="text"
-                    value={settingsForm.bkash}
+                    value={settingsForm.bkash || ''}
                     onChange={(e) => setSettingsForm({ ...settingsForm, bkash: e.target.value })}
                     className="w-full bg-[#0b1022] border border-indigo-800 rounded-xl px-3 py-2 text-xs text-white font-mono"
-                    required
                   />
                 </div>
 
@@ -1336,10 +1418,9 @@ export const AdminPanel: React.FC = () => {
                   <label className="block text-xs text-slate-300 font-semibold mb-1">Nagad নম্বর (Personal)</label>
                   <input
                     type="text"
-                    value={settingsForm.nagad}
+                    value={settingsForm.nagad || ''}
                     onChange={(e) => setSettingsForm({ ...settingsForm, nagad: e.target.value })}
                     className="w-full bg-[#0b1022] border border-indigo-800 rounded-xl px-3 py-2 text-xs text-white font-mono"
-                    required
                   />
                 </div>
 
@@ -1347,10 +1428,9 @@ export const AdminPanel: React.FC = () => {
                   <label className="block text-xs text-slate-300 font-semibold mb-1">Rocket নম্বর (Personal)</label>
                   <input
                     type="text"
-                    value={settingsForm.rocket}
+                    value={settingsForm.rocket || ''}
                     onChange={(e) => setSettingsForm({ ...settingsForm, rocket: e.target.value })}
                     className="w-full bg-[#0b1022] border border-indigo-800 rounded-xl px-3 py-2 text-xs text-white font-mono"
-                    required
                   />
                 </div>
 
@@ -1429,10 +1509,9 @@ export const AdminPanel: React.FC = () => {
                   <label className="block text-xs text-slate-300 font-semibold mb-1">WhatsApp হেল্পলাইন নম্বর</label>
                   <input
                     type="text"
-                    value={settingsForm.whatsappSupport}
+                    value={settingsForm.whatsappSupport || ''}
                     onChange={(e) => setSettingsForm({ ...settingsForm, whatsappSupport: e.target.value })}
                     className="w-full bg-[#0b1022] border border-indigo-800 rounded-xl px-3 py-2 text-xs text-white font-mono"
-                    required
                   />
                 </div>
 
@@ -1465,26 +1544,35 @@ export const AdminPanel: React.FC = () => {
               <h3 className="text-sm font-bold text-cyan-400 border-b border-indigo-950 pb-2 pt-2">
                 Multiplayer Pro Match — Player Count
               </h3>
-              <div className="bg-[#0b1022] border border-cyan-900/70 rounded-xl p-3 space-y-2">
-                <p className="text-[10px] text-slate-500">3, 5, 7 অথবা 10 জনের Pro Match আলাদাভাবে Active/Inactive করুন। প্রতিটির Entry Fee, কতজন Prize পাবেন এবং 1st/2nd/3rd... rank-এর Prize আপনি নিজে সেট করতে পারবেন। Active + Home ON হলে শুধু সেই Match Home Screen-এ দেখাবে।</p>
+              <div className="bg-[#0b1022] border border-cyan-900/70 rounded-xl p-3 space-y-3">
+                <p className="text-[10px] text-slate-500">এখানে আপনি 3, 5, 7, 10 বা আপনার প্রয়োজনমতো যেকোনো 3–1000 Player Count যোগ করতে পারবেন। Save করলে Active + Home ON করা Match-গুলো Home Screen-এ দেখাবে।</p>
+                <button type="button" onClick={() => {
+                  const rows = Array.isArray(settingsForm.multiplayerProMatches) ? [...settingsForm.multiplayerProMatches] : [];
+                  const used = new Set(rows.map((r:any) => Number(r.players)));
+                  let players = 3;
+                  while (used.has(players)) players += 1;
+                  const row = { id:`mp_${players}_${Date.now()}`, players, entryFee:20, prizeAmount:40, prizes:[40], active:false, showOnHome:true, displayOrder:rows.length+1, name:`Multiplayer Pro Match • ${players} Players` };
+                  setSettingsForm({...settingsForm, multiplayerProMatches:[...rows,row]});
+                }} className="w-full rounded-xl border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 font-black text-xs py-2.5">+ Player Count যোগ করুন</button>
                 <div className="space-y-2">
-                  {(settingsForm.multiplayerProMatches || [{id:'mp_3',players:3,entryFee:20,prizeAmount:40,prizes:[40],active:false,showOnHome:true,displayOrder:1},{id:'mp_5',players:5,entryFee:30,prizeAmount:80,prizes:[80],active:false,showOnHome:true,displayOrder:2},{id:'mp_7',players:7,entryFee:60,prizeAmount:160,prizes:[160],active:false,showOnHome:true,displayOrder:3},{id:'mp_10',players:10,entryFee:120,prizeAmount:300,prizes:[300],active:false,showOnHome:true,displayOrder:4}]).map((m:any, i:number) => {
+                  {(Array.isArray(settingsForm.multiplayerProMatches) ? settingsForm.multiplayerProMatches : []).map((m:any, i:number) => {
                     const prizes = Array.isArray(m.prizes) && m.prizes.length ? m.prizes : [Number(m.prizeAmount||0)];
-                    const rows = settingsForm.multiplayerProMatches || [];
+                    const rows = Array.isArray(settingsForm.multiplayerProMatches) ? settingsForm.multiplayerProMatches : [];
                     const update = (patch:any) => { const next=[...rows]; next[i]={...m,...patch}; setSettingsForm({...settingsForm,multiplayerProMatches:next}); };
                     const setWinnerCount = (count:number) => { const n=Math.max(1,Math.min(Number(m.players)||1,Math.floor(count||1))); const nextPrizes=prizes.slice(0,n); while(nextPrizes.length<n) nextPrizes.push(0); update({prizes:nextPrizes,prizeAmount:Number(nextPrizes[0]||0)}); };
                     return (
-                    <div key={m.id || i} className="rounded-xl border border-indigo-900 bg-[#080d1b] p-2.5 space-y-2">
-                      <div className="flex items-center justify-between"><b className="text-xs text-white">{m.players} Players</b><label className="flex items-center gap-2 text-[10px] text-slate-300"><input type="checkbox" checked={m.active === true} onChange={e=>update({active:e.target.checked})} className="w-4 h-4 accent-cyan-500"/> Active</label></div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div><label className="block text-[10px] text-slate-500 mb-1">Entry Fee ৳</label><input type="number" min="1" value={m.entryFee} onChange={e=>update({entryFee:Number(e.target.value)})} className="w-full bg-[#0b1022] border border-indigo-800 rounded-xl px-3 py-2 text-xs text-white"/></div>
-                        <div><label className="block text-[10px] text-slate-500 mb-1">কতজন Prize পাবেন?</label><input type="number" min="1" max={m.players} value={prizes.length} onChange={e=>setWinnerCount(Number(e.target.value))} className="w-full bg-[#0b1022] border border-indigo-800 rounded-xl px-3 py-2 text-xs text-white"/></div>
+                      <div key={m.id || i} className="rounded-xl border border-indigo-900 bg-[#080d1b] p-2.5 space-y-2">
+                        <div className="flex items-center justify-between gap-2"><b className="text-xs text-white">{m.players} Players</b><div className="flex items-center gap-2"><label className="flex items-center gap-1 text-[10px] text-slate-300"><input type="checkbox" checked={m.active === true} onChange={e=>update({active:e.target.checked})} className="w-4 h-4 accent-cyan-500"/> Active</label><button type="button" onClick={()=>{ const next=rows.filter((_:any,j:number)=>j!==i); setSettingsForm({...settingsForm,multiplayerProMatches:next}); }} className="rounded-lg border border-red-900/60 px-2 py-1 text-[10px] text-red-300">Remove</button></div></div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div><label className="block text-[10px] text-slate-500 mb-1">Player Count</label><input type="number" min="3" max="1000" step="1" value={m.players} onChange={e=>update({players:Math.floor(Number(e.target.value)||0)})} className="w-full bg-[#0b1022] border border-indigo-800 rounded-xl px-3 py-2 text-xs text-white"/></div>
+                          <div><label className="block text-[10px] text-slate-500 mb-1">Entry Fee ৳</label><input type="number" min="1" step="0.01" value={m.entryFee} onChange={e=>update({entryFee:Number(e.target.value)})} className="w-full bg-[#0b1022] border border-indigo-800 rounded-xl px-3 py-2 text-xs text-white"/></div>
+                        </div>
+                        <div><label className="block text-[10px] text-slate-500 mb-1">কতজন Prize পাবেন?</label><input type="number" min="1" max={Math.max(1,Number(m.players)||1)} value={prizes.length} onChange={e=>setWinnerCount(Number(e.target.value))} className="w-full bg-[#0b1022] border border-indigo-800 rounded-xl px-3 py-2 text-xs text-white"/></div>
+                        <div className="grid grid-cols-2 gap-2">
+                          {prizes.map((amount:number, pi:number)=><div key={pi}><label className="block text-[10px] text-amber-300 mb-1">#{pi+1} Prize ৳</label><input type="number" min="1" step="0.01" value={amount} onChange={e=>{const nextPrizes=[...prizes]; nextPrizes[pi]=Number(e.target.value); update({prizes:nextPrizes,prizeAmount:Number(nextPrizes[0]||0)});}} className="w-full bg-[#0b1022] border border-amber-900/60 rounded-xl px-3 py-2 text-xs text-white"/></div>)}
+                        </div>
+                        <div className="flex items-center justify-between gap-2"><span className="text-[10px] text-slate-500">মোট Prize: ৳{prizes.reduce((a:number,v:number)=>a+Number(v||0),0)}</span><label className="flex items-center gap-2 text-[10px] text-slate-300"><input type="checkbox" checked={m.showOnHome !== false} onChange={e=>update({showOnHome:e.target.checked})} className="w-4 h-4 accent-amber-500"/> Home Screen-এ দেখান</label></div>
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        {prizes.map((amount:number, pi:number)=><div key={pi}><label className="block text-[10px] text-amber-300 mb-1">#{pi+1} Prize ৳</label><input type="number" min="1" value={amount} onChange={e=>{const nextPrizes=[...prizes]; nextPrizes[pi]=Number(e.target.value); update({prizes:nextPrizes,prizeAmount:Number(nextPrizes[0]||0)});}} className="w-full bg-[#0b1022] border border-amber-900/60 rounded-xl px-3 py-2 text-xs text-white"/></div>)}
-                      </div>
-                      <div className="flex items-center justify-between gap-2"><span className="text-[10px] text-slate-500">মোট Prize: ৳{prizes.reduce((a:number,v:number)=>a+Number(v||0),0)}</span><label className="flex items-center gap-2 text-[10px] text-slate-300"><input type="checkbox" checked={m.showOnHome !== false} onChange={e=>update({showOnHome:e.target.checked})} className="w-4 h-4 accent-amber-500"/> Home Screen-এ দেখান</label></div>
-                    </div>
                     );
                   })}
                 </div>
@@ -1538,10 +1626,11 @@ export const AdminPanel: React.FC = () => {
               <div className="pt-3">
                 <button
                   type="submit"
+                  disabled={settingsSaving}
                   className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black px-6 py-2.5 rounded-xl text-xs shadow-lg active:scale-95 transition-all flex items-center gap-2"
                 >
                   <Check className="w-4 h-4 stroke-[3]" />
-                  <span>সেটিংস সেভ করুন</span>
+                  <span>{settingsSaving ? 'সেভ হচ্ছে...' : settingsSaved ? 'সেভ হয়েছে ✓' : 'সেটিংস সেভ করুন ও Home-এ যান'}</span>
                 </button>
                 {settingsSaved && (
                   <p className="text-xs text-emerald-400 font-bold mt-2 animate-fade-in">

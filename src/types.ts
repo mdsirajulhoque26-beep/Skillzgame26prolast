@@ -1,5 +1,6 @@
 export type TabType = 
   | 'home' 
+  | 'history'
   | 'wallet' 
   | 'transactions' 
   | 'profile' 
