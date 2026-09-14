@@ -8,7 +8,8 @@ import {
   Gamepad2,
   Trophy,
   ArrowLeft,
-  Share2
+  Share2,
+  History
 } from 'lucide-react';
 import { backendApi } from '../services/backendApi';
 
@@ -250,6 +251,18 @@ export const HomeScreen: React.FC = () => {
           </div>
           <span className="text-xs font-bold text-white">লেনদেন</span>
           <span className="text-[10px] text-slate-400">হিস্ট্রি দেখুন</span>
+        </button>
+
+        <button
+          id="quick-history-btn"
+          onClick={() => { sessionStorage.setItem('skillz_open_block_history', '1'); setCurrentTab('block_puzzle'); }}
+          className="bg-[#121935] hover:bg-[#182145] border border-indigo-900/60 rounded-xl p-2.5 flex flex-col items-center text-center transition-colors"
+        >
+          <div className="w-8 h-8 rounded-full bg-cyan-400/10 flex items-center justify-center text-cyan-400 mb-1">
+            <History className="w-4 h-4" />
+          </div>
+          <span className="text-xs font-bold text-white">হিস্টোরি</span>
+          <span className="text-[10px] text-slate-400">ম্যাচ হিস্টোরি</span>
         </button>
 
         <button
