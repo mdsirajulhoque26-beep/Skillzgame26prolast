@@ -226,20 +226,31 @@ export const BlockPuzzleDuel: React.FC = () => {
         if (match.status === 'PLAYING') initMatch('tournament', difficulty, match.gameStartedAt || match.startsAt || undefined, Number(match.gameSeed) || null);
         else if (match.status === 'COMPLETED' || match.status === 'SUBMITTED') await openTournamentRankList(String(match.tournamentId));
       } else if (match.status === 'PLAYING' || match.status === 'MATCHED') {
-        // Pro Match is asynchronous: paying for an entry starts this player's
-        // own 3-minute attempt immediately. An opponent is optional and may
-        // join later, so never send an active solo match back to matchmaking.
-        const startAt = match.gameStartedAt || match.startsAt || new Date().toISOString();
-        startCountdown('duel', startAt, Number(match.gameSeed) || null);
-      } else if (match.status === 'PENDING' || match.status === 'SUBMITTED') {
-        // A submitted solo score is waiting for Admin review. Do not restart it.
-        setEntryFee(Number(match.entryFee || 0));
-        setPrize(Number(match.prizeAmount || 0));
+        // Resume only a genuinely active Pro Match. If the old session already
+        // passed its 3-minute deadline, do not rehydrate it: the server will
+        // finalize that stale session on the next write, while this screen must
+        // remain a clean entry-fee lobby. This prevents an old 0-point match
+        // from auto-submitting the moment the user opens Pro Match.
+        const startAt = match.gameStartedAt || match.startsAt || '';
+        const startMs = Date.parse(startAt);
+        const expired = Number.isFinite(startMs) && startMs + TOTAL_MATCH_TIME * 1000 <= Date.now();
+        if (expired) {
+          setActiveMatchId('');
+          setMatchedOpponent(undefined);
+          setMatchOutcome('PENDING');
+          setScreenState('lobby');
+          return;
+        }
+        initMatch('duel', difficulty, startAt || undefined, Number(match.gameSeed) || null);
+        if (match.opponent) setMatchedOpponent({ name: match.opponent.name, score: Number(match.opponent.score || 0), linesCleared: Number(match.opponent.linesCleared || 0) });
+      } else {
+        // Submitted/completed/refunded history belongs in Pending & History.
+        // Opening the Pro Match tab must always show the entry-fee lobby instead
+        // of auto-opening an old 0-point result.
+        setActiveMatchId('');
+        setMatchedOpponent(undefined);
         setMatchOutcome('PENDING');
-        setScreenState('result');
-      } else if (match.status === 'COMPLETED') {
-        setMatchOutcome(match.outcome || 'PENDING');
-        setScreenState('result');
+        setScreenState('lobby');
       }
     };
     boot();
@@ -470,7 +481,10 @@ export const BlockPuzzleDuel: React.FC = () => {
     setGameMode('duel');
     setMatchedOpponent(undefined);
     setServerGameStartedAt(null);
-    setScreenState('matchmaking');
+    setActiveMatchId('');
+    setMatchOutcome('PENDING');
+    setIsSubmittingScore(false);
+    setScreenState('lobby');
 
     const cfg = multiplayerProConfig;
     const res = await startBlockPuzzleMatch(cfg ? Number(cfg.entryFee) : fee, cfg ? Number(cfg.prizeAmount) : winPrize, cfg ? Number(cfg.players) : 2);
@@ -490,11 +504,9 @@ export const BlockPuzzleDuel: React.FC = () => {
     setServerGameStartedAt(createdStart);
     if (createdMatch?.opponent) setMatchedOpponent({ name: createdMatch.opponent.name, score: Number(createdMatch.opponent.score || 0), linesCleared: Number(createdMatch.opponent.linesCleared || 0) });
     if (Number.isFinite(Number(createdMatch?.gameSeed ?? (res as any).gameSeed))) setMatchSeed(Number(createdMatch?.gameSeed ?? (res as any).gameSeed));
-    // Every new paid Pro Match starts this player's own attempt immediately.
-    // Do NOT use the server timestamp/countdown here: the server's createdAt can
-    // be a few seconds old by the time the response reaches the phone, and a
-    // background status poll can otherwise re-initialize the game. A fresh paid
-    // attempt always gets a brand-new local 180-second clock.
+    // Every new paid Pro Match starts immediately. Do not show a matchmaking
+    // holding screen and do not use an old server timestamp for the first clock.
+    // The opponent can join later; this player's 180-second attempt starts now.
     initMatch('duel', difficulty, undefined, Number(createdMatch?.gameSeed ?? (res as any).gameSeed) || null);
   };
 
