@@ -50,7 +50,7 @@ export const HistoryScreen: React.FC = () => {
     try {
       const data = await Promise.race([
         getMyPendingGames(),
-        new Promise<any[]>((_, reject) => setTimeout(() => reject(new Error('History request timeout')), 12000)),
+        new Promise<any[]>((_, reject) => setTimeout(() => reject(new Error('History request timeout')), 18000)),
       ]);
       const seen = new Map<string, any>();
       for (const item of data || []) {

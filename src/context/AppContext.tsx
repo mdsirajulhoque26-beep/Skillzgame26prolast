@@ -287,26 +287,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const getMyPendingGames = async () => {
-    // Build the feed from BOTH server sources. The aggregated /pending-games
-    // endpoint is useful for tournaments/other games, but the authoritative
-    // per-player Pro Match history endpoint must also be included. This makes
-    // sure a just-submitted Pro Match cannot disappear from Pending & History
-    // because one feed is briefly empty/stale.
+    // Build the feed from BOTH server sources in parallel. Running these
+    // requests one after another made History unnecessarily slow on a busy or
+    // cold Vercel/Mongo connection: the 12s History timeout could expire while
+    // the second request was still waiting. Each feed is optional; if one
+    // endpoint is temporarily unavailable, the other can still populate the
+    // player's history.
     const merged = new Map<string, any>();
+    const [pendingResult, mineResult] = await Promise.allSettled([
+      backendApi.pendingGames(),
+      backendApi.myBlockPuzzleMatches(),
+    ]);
 
-    try {
-      const data = await backendApi.pendingGames();
-      for (const item of (data.items || [])) {
+    let successfulFeeds = 0;
+
+    if (pendingResult.status === 'fulfilled') {
+      successfulFeeds += 1;
+      for (const item of (pendingResult.value.items || [])) {
         const key = String(item.matchId || item.id);
         if (key) merged.set(key, item);
       }
-    } catch (e) {
-      console.warn('Pending-games feed unavailable; continuing with Pro Match history.', e);
+    } else {
+      console.warn('Pending-games feed unavailable; continuing with Pro Match history.', pendingResult.reason);
     }
 
-    try {
-      const mine = await backendApi.myBlockPuzzleMatches();
-      for (const m of (mine.matches || [])) {
+    if (mineResult.status === 'fulfilled') {
+      successfulFeeds += 1;
+      for (const m of (mineResult.value.matches || [])) {
         const item = {
           ...m,
           type: m.tournamentId ? 'TOURNAMENT_MATCH' : 'PRO_MATCH',
@@ -318,8 +325,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const key = String(item.matchId || item.id);
         if (key) merged.set(key, { ...(merged.get(key) || {}), ...item });
       }
-    } catch (e) {
-      console.warn('Pro Match history feed unavailable.', e);
+    } else {
+      console.warn('Pro Match history feed unavailable.', mineResult.reason);
+    }
+
+    // Do not silently show an empty history when the API/auth/database is
+    // completely unavailable. The History screen can then show its retry UI.
+    if (successfulFeeds === 0) {
+      throw new Error('History API unavailable');
     }
 
     return Array.from(merged.values()).sort((a: any, b: any) =>
