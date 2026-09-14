@@ -309,7 +309,7 @@ function blockPuzzlePublicMatch(session, db) {
     gameStartedAt: session.gameStartedAt || null, submittedAt: session.submittedAt || null,
     paused: Boolean(session.pauseStartedAt || session.paused), pauseStartedAt: session.pauseStartedAt || null,
     score: session.score ?? null, linesCleared: session.linesCleared ?? 0, bestCombo: session.bestCombo ?? 0,
-    opponent: opponent ? { userId: opponent.id, name: opponent.name, score: session.opponentScore ?? null, linesCleared: session.opponentLinesCleared ?? 0 } : null,
+    opponent: opponent ? { userId: opponent.id, name: opponent.name, score: session.opponentScore ?? opponent.score ?? null, linesCleared: session.opponentLinesCleared ?? opponent.linesCleared ?? 0 } : null,
     outcome: session.outcome || null, winnerId: session.winnerId || null, settledAt: session.settledAt || null,
     refunded: Boolean(session.refunded)
   };

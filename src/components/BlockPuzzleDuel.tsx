@@ -137,7 +137,7 @@ export const BlockPuzzleDuel: React.FC = () => {
         linesCleared: Number(m.linesCleared || 0), bestCombo: Number(m.bestCombo || 0),
         date: m.createdAt ? new Date(m.createdAt).toLocaleString('en-GB') : '',
         status: rawStatus === 'COMPLETED' ? outcome : isTournament ? 'TOURNAMENT' : 'PENDING',
-        mode: isTournament ? `🏆 Tournament • ${m.title || ''}` : m.type === 'ARCADE_MATCH' ? `🎮 ${m.title || 'Online Match'}` : m.type === 'MATCH' ? `🎯 ${m.title || 'Match'}` : '⚔️ Pro Match',
+        mode: isTournament ? `🏆 Tournament • ${m.title || ''}` : m.gameType === 'nut_sort' ? '🔩 Nut Sort 1v1' : m.type === 'ARCADE_MATCH' ? `🎮 ${m.title || 'Online Match'}` : m.type === 'MATCH' ? `🎯 ${m.title || 'Match'}` : '⚔️ Pro Match',
         opponentName: m.opponent?.name || undefined, opponentScore: m.opponent?.score ?? undefined,
       };
     });

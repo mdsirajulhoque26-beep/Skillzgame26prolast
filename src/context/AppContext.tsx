@@ -287,10 +287,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const getMyPendingGames = async () => {
+    // History/Pending must not disappear just because the aggregated feed is
+    // temporarily empty or unavailable. Fall back to the authoritative
+    // per-player Pro Match history endpoint.
     try {
       const data = await backendApi.pendingGames();
-      return data.items || [];
-    } catch { return []; }
+      const items = data.items || [];
+      if (items.length) return items;
+    } catch (e) {
+      console.warn('Pending-games feed unavailable; using match history fallback.', e);
+    }
+    try {
+      const mine = await backendApi.myBlockPuzzleMatches();
+      return (mine.matches || []).map((m: any) => ({
+        ...m,
+        type: m.tournamentId ? 'TOURNAMENT_MATCH' : 'PRO_MATCH',
+        gameType: m.gameType || 'block_puzzle',
+        title: m.gameType === 'nut_sort' ? 'Nut Sort 1v1' : 'Pro Match',
+        prizeAmount: Number(m.prizeAmount || 0),
+        opponent: m.opponent || null,
+      }));
+    } catch (e) {
+      console.warn('Pro Match history fallback unavailable.', e);
+      return [];
+    }
   };
 
   const getBlockPuzzleMatchStatus = async (matchId: string) => {
