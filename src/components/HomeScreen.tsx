@@ -217,7 +217,7 @@ export const HomeScreen: React.FC = () => {
                 <span className="text-[11px] text-slate-300 block mt-0.5">Entry ৳{Number(game.entryFee || 0).toFixed(0)} • Prize ৳{Number(game.prizeAmount || 0).toFixed(0)}</span>
               </div>
             </div>
-            <button disabled={!playable} onClick={(e) => { e.stopPropagation(); if (playable) setCurrentTab(game.gameType === 'pool' ? 'pool' : game.gameType === 'carrom' ? 'carrom' : 'block_puzzle'); }} className={`font-black text-xs px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-1.5 z-10 ${playable ? 'bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-950' : 'bg-slate-700/70 text-slate-400 cursor-not-allowed'}`}>
+            <button disabled={!playable} onClick={(e) => { e.stopPropagation(); if (playable) setCurrentTab(game.gameType === 'pool' ? 'pool' : game.gameType === 'carrom' ? 'carrom' : game.gameType === 'nut_sort' ? 'nut_sort' : 'block_puzzle'); }} className={`font-black text-xs px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-1.5 z-10 ${playable ? 'bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-950' : 'bg-slate-700/70 text-slate-400 cursor-not-allowed'}`}>
               <Play className="w-4 h-4 fill-current" /> <span>{playable ? 'Play' : 'শীঘ্রই'}</span>
             </button>
           </div>
