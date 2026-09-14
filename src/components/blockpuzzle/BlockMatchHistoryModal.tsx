@@ -35,7 +35,7 @@ export const BlockMatchHistoryModal: React.FC<BlockMatchHistoryModalProps> = ({ 
             <History className="w-5 h-5 text-cyan-400" />
             <div>
               <h3 className="font-black text-white text-base">MATCH HISTORY</h3>
-              <p className="text-[10px] text-slate-400">প্রতিটি Block Puzzle ম্যাচের আলাদা ফলাফল</p>
+              <p className="text-[10px] text-slate-400">Block Puzzle, Nut Sort 1v1 ও অন্যান্য Pro Match-এর ফলাফল</p>
             </div>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-[#141b38] flex items-center justify-center text-slate-400 hover:text-white">
@@ -45,7 +45,7 @@ export const BlockMatchHistoryModal: React.FC<BlockMatchHistoryModalProps> = ({ 
 
         <div className="space-y-2">
           {matches.length === 0 ? (
-            <div className="text-center py-8 text-slate-400 text-xs">এখনও কোনো Block Puzzle ম্যাচ নেই।</div>
+            <div className="text-center py-8 text-slate-400 text-xs">এখনও কোনো Pro Match বা Nut Sort ম্যাচ নেই।</div>
           ) : orderedMatches.map((m) => {
             const resultLabel = m.result === 'WIN' ? 'WIN' : m.result === 'LOSS' ? 'LOSS' : m.result === 'DRAW' ? 'DRAW' : m.result === 'TOURNAMENT' ? 'TOURNAMENT' : m.result === 'REFUNDED' ? 'REFUNDED' : 'PENDING';
             const resultClass = m.result === 'WIN' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' : m.result === 'LOSS' ? 'text-red-400 bg-red-500/10 border-red-500/30' : m.result === 'DRAW' ? 'text-blue-400 bg-blue-500/10 border-blue-500/30' : m.result === 'TOURNAMENT' ? 'text-purple-300 bg-purple-500/10 border-purple-500/30' : m.result === 'REFUNDED' ? 'text-slate-300 bg-slate-500/10 border-slate-500/30' : 'text-amber-400 bg-amber-500/10 border-amber-500/30';

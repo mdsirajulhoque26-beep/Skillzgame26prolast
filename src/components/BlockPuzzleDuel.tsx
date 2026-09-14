@@ -145,7 +145,14 @@ export const BlockPuzzleDuel: React.FC = () => {
 
   const refreshBlockPuzzleMatches = useCallback(async () => {
     const items = await getMyPendingGames();
-    setPendingMatches(mapServerPendingGames(items));
+    // Block Puzzle owns its own Pending/History section. Keep Nut Sort 1v1
+    // records out of this screen while retaining legacy Block Puzzle and
+    // Tournament records.
+    const blockOnly = (items || []).filter((m: any) => {
+      const gt = String(m.gameType || '').toLowerCase();
+      return !gt || gt === 'block_puzzle' || gt === 'block_puzzle_tournament';
+    });
+    setPendingMatches(mapServerPendingGames(blockOnly));
   }, [getMyPendingGames, mapServerPendingGames]);
 
   useEffect(() => {
