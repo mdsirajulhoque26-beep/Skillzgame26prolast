@@ -68,7 +68,7 @@ export const HomeScreen: React.FC = () => {
           <div className="flex items-center justify-between pt-1"><div className="flex items-center gap-2"><Zap className="w-4 h-4 text-cyan-400"/><h3 className="text-sm font-black text-white">Multiplayer Pro Match</h3></div><span className="text-[10px] text-slate-500">Block Puzzle</span></div>
           {paymentSettings.multiplayerProMatches.filter((m:any)=>m.active!==false && m.showOnHome!==false).sort((a:any,b:any)=>Number(a.displayOrder||0)-Number(b.displayOrder||0)).map((m:any)=>(
             <div key={m.id} onClick={()=>{sessionStorage.setItem('skillz_multiplayer_pro_config', JSON.stringify(m)); setCurrentTab('block_puzzle');}} className="rounded-2xl border border-cyan-500/40 bg-gradient-to-r from-cyan-950/80 via-[#132348] to-indigo-950/90 p-4 cursor-pointer active:scale-[0.99] transition-transform shadow-xl">
-              <div className="flex items-center justify-between gap-3"><div><div className="text-[10px] font-black tracking-wider text-cyan-300">MULTIPLAYER PRO MATCH</div><h4 className="mt-1 text-lg font-black text-white">{m.name || `${m.players} Players Pro Match`}</h4><p className="mt-1 text-[11px] text-slate-400">{m.players} জন • Full হলে ম্যাচ শুরু হবে</p></div><div className="text-right shrink-0"><div className="text-[10px] text-slate-500">ENTRY</div><b className="text-base text-white">৳{Number(m.entryFee||0).toFixed(0)}</b><div className="text-[10px] text-amber-300">WIN ৳{Number(m.prizeAmount||0).toFixed(0)}</div></div></div>
+              <div className="flex items-center justify-between gap-3"><div><div className="text-[10px] font-black tracking-wider text-cyan-300">MULTIPLAYER PRO MATCH</div><h4 className="mt-1 text-lg font-black text-white">{m.name || `${m.players} Players Pro Match`}</h4><p className="mt-1 text-[11px] text-slate-400">{m.players} জন • Full হলে ম্যাচ শুরু হবে</p></div><div className="text-right shrink-0"><div className="text-[10px] text-slate-500">ENTRY</div><b className="text-base text-white">৳{Number(m.entryFee||0).toFixed(0)}</b><div className="text-[10px] text-amber-300">PRIZE ৳{(Array.isArray(m.prizes) && m.prizes.length ? m.prizes : [m.prizeAmount||0]).map((p:number,i:number)=>`${i+1}৳${Number(p||0).toFixed(0)}`).join(' • ')}</div></div></div>
             </div>
           ))}
         </div>
@@ -143,7 +143,9 @@ export const HomeScreen: React.FC = () => {
 
             {detailTab==='prizes' ? (
               <div className="mt-3 rounded-[20px] bg-[#111827] p-4">
-                <div className="mb-2 text-[10px] font-black tracking-wide text-slate-500">TOURNAMENT PLAYERS</div>
+                <div className="mb-3 flex items-center justify-between"><div><div className="text-[10px] font-black tracking-wide text-slate-500">PRIZE DISTRIBUTION</div><div className="mt-1 text-xs font-bold text-white">{Number(selectedTournament.prizeWinnerCount || (selectedTournament.prizeDistribution||[]).length || 0)} জন Prize পাবেন</div></div><div className="text-right"><div className="text-[8px] text-slate-500">PRIZE POOL</div><b className="text-sm text-amber-300">৳{Number(selectedTournament.prizePool||0).toFixed(0)}</b></div></div>
+                {(selectedTournament.prizeDistribution||[]).length ? <div className="grid grid-cols-2 gap-2 mb-4">{(selectedTournament.prizeDistribution||[]).map((p:any)=><div key={p.rank} className="rounded-xl border border-amber-500/20 bg-[#0b1220] px-3 py-2.5 flex items-center justify-between"><span className="text-xs font-black text-slate-300">#{p.rank}</span><span className="text-sm font-black text-amber-300">৳{Number(p.amount||0).toFixed(0)}</span></div>)}</div> : <div className="mb-4 rounded-xl border border-dashed border-slate-700 bg-[#0b1220] px-3 py-3 text-center text-[10px] text-slate-500">এখনো কোনো Prize Rank সেট করা হয়নি।</div>}
+                <div className="mb-2 text-[10px] font-black tracking-wide text-slate-500">TOURNAMENT PLAYERS • CURRENT SCORE / RANK</div>
                 {Array.from({ length: Math.max(0, Number(selectedTournament.maxPlayers || 0)) }, (_, i) => {
                   const e = (selectedTournament.entries || [])[i];
                   const slot = i + 1;
@@ -154,7 +156,7 @@ export const HomeScreen: React.FC = () => {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-black text-white truncate">{e.rank===1?'🥇':e.rank===2?'🥈':e.rank===3?'🥉':`${slot}.`} {e.username}</div>
-                        <div className="text-[9px] text-slate-500">ID: {e.userId}</div>
+                        <div className="text-[9px] text-slate-500">Score: <span className="font-mono font-bold text-cyan-300">{Number(e.score||0).toLocaleString()}</span> pts • ID: {e.userId}</div>
                       </div>
                       <div className="text-right"><div className="text-[9px] text-slate-500">PRIZE</div><b className="text-sm text-amber-300">৳{Number(e.prize||0).toFixed(0)}</b></div>
                     </div>
@@ -163,9 +165,9 @@ export const HomeScreen: React.FC = () => {
                       <div className="h-10 w-10 shrink-0 rounded-full border border-dashed border-slate-700 bg-[#0b1220] flex items-center justify-center text-xs font-black text-slate-600">{slot}</div>
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-bold text-slate-600">খালি Player Slot</div>
-                        <div className="text-[9px] text-slate-700">Player-এর জন্য অপেক্ষা করছে</div>
+                        <div className="text-[9px] text-slate-700">Player-এর জন্য অপেক্ষা করছে • Score: —</div>
                       </div>
-                      <div className="text-right"><div className="text-[9px] text-slate-700">STATUS</div><b className="text-[10px] text-slate-600">EMPTY</b></div>
+                      <div className="text-right"><div className="text-[9px] text-slate-700">PRIZE</div><b className="text-[10px] text-slate-600">৳{Number((selectedTournament.prizeDistribution||[]).find((p:any)=>Number(p.rank)===slot)?.amount||0).toFixed(0)}</b></div>
                     </div>
                   );
                 })}

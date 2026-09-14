@@ -288,11 +288,25 @@ const BP_GAME_MS = 3 * 60 * 1000;
 const BP_PROTOCOL_VERSION = 1;
 const DEFAULT_PRO_MATCH_FEES = [20, 30, 60, 120, 250, 500];
 const PRO_MATCH_PRIZES = [35, 50, 100, 200, 420, 850];
+const DEFAULT_MULTIPLAYER_PRO_MATCHES = [
+  {id:'mp_3', players:3, entryFee:20, prizes:[40], active:false, showOnHome:true, displayOrder:1},
+  {id:'mp_5', players:5, entryFee:30, prizes:[80], active:false, showOnHome:true, displayOrder:2},
+  {id:'mp_7', players:7, entryFee:60, prizes:[160], active:false, showOnHome:true, displayOrder:3},
+  {id:'mp_10', players:10, entryFee:120, prizes:[300], active:false, showOnHome:true, displayOrder:4}
+];
 const BLOCK_BOARD_SIZE = 10;
 function emptyBoard() { return Array.from({ length: BLOCK_BOARD_SIZE }, () => Array(BLOCK_BOARD_SIZE).fill(0)); }
 function proMatchFees(db) {
   const fees = Array.isArray(db.paymentSettings?.proMatchFees) ? db.paymentSettings.proMatchFees.map(Number).filter(n => Number.isFinite(n) && n > 0) : [];
   return fees.length === DEFAULT_PRO_MATCH_FEES.length ? fees : DEFAULT_PRO_MATCH_FEES;
+}
+function multiplayerProMatchConfig(db, playerCount) {
+  const rows = Array.isArray(db.paymentSettings?.multiplayerProMatches) ? db.paymentSettings.multiplayerProMatches : DEFAULT_MULTIPLAYER_PRO_MATCHES;
+  return rows.find(x => Math.floor(Number(x?.players)) === Number(playerCount)) || null;
+}
+function multiplayerPrizes(config) {
+  const raw = Array.isArray(config?.prizes) ? config.prizes : (config?.prizeAmount ? [config.prizeAmount] : []);
+  return raw.map(Number).filter(n => Number.isFinite(n) && n > 0).map(money);
 }
 
 function blockPuzzlePublicMatch(session, db) {
@@ -302,7 +316,7 @@ function blockPuzzlePublicMatch(session, db) {
   const participants = group.map(m => ({ userId:m.userId, name:m.userName, score:m.score ?? null, status:m.status, submitted: Boolean(m.submittedAt) }));
   return {
     id: session.id, gameType: session.gameType || 'block_puzzle', duelId: session.duelId || null, tournamentId: session.tournamentId || null, userId: session.userId, userName: session.userName, playerCount: Number(session.playerCount || 2), playersJoined: participants.length, participants,
-    entryFee: session.entryFee, prizeAmount: session.prizeAmount, status: session.status,
+    entryFee: session.entryFee, prizeAmount: session.prizeAmount, prizeDistribution: Array.isArray(session.prizeDistribution) ? session.prizeDistribution : (session.prizeAmount ? [session.prizeAmount] : []), status: session.status,
     createdAt: session.createdAt, pendingUntil: session.pendingUntil || null, matchedAt: session.matchedAt || null,
     liveStateVersion: BP_PROTOCOL_VERSION,
     gameSeed: session.gameSeed || null,
@@ -323,37 +337,28 @@ async function settleBlockPuzzleDuel(db, duelId) {
   if (sessions.some(m => m.settledAt)) return true;
   if (sessions.some(m => m.status !== 'SUBMITTED')) return false;
   const ranked = sessions.slice().sort((a,b) => Number(b.score||0) - Number(a.score||0) || String(a.userId).localeCompare(String(b.userId)));
-  const topScore = Number(ranked[0]?.score || 0);
-  const winners = ranked.filter(m => Number(m.score||0) === topScore);
+  const distribution = Array.isArray(sessions[0]?.prizeDistribution) && sessions[0].prizeDistribution.length
+    ? sessions[0].prizeDistribution.map(Number).filter(n => Number.isFinite(n) && n > 0).map(money)
+    : (Number(sessions[0]?.prizeAmount || 0) > 0 ? [money(Number(sessions[0].prizeAmount))] : []);
   const settled = now();
   for (const session of sessions) {
     session.status = 'COMPLETED';
     session.settledAt = settled;
-    session.winnerId = winners.length === 1 ? winners[0].userId : null;
-    session.outcome = winners.length === 1 ? (session.userId === winners[0].userId ? 'WON' : 'LOST') : 'DRAW';
     session.groupRank = ranked.findIndex(x => x.userId === session.userId) + 1;
+    const rankPrize = Number(distribution[session.groupRank - 1] || 0);
+    session.winnerId = distribution.length && session.groupRank <= distribution.length ? session.userId : null;
+    session.outcome = distribution.length && session.groupRank <= distribution.length ? 'WON' : 'LOST';
+    session.awardedPrize = rankPrize;
   }
-  if (winners.length === 1) {
-    const winningSession = winners[0];
-    const winner = db.users.find(u => u.id === winningSession.userId);
-    if (winner) {
-      const prize = money(Number(winningSession.prizeAmount || 0));
-      if (prize > 0) {
-        winner.winningBalance = money(Number(winner.winningBalance || 0) + prize);
-        winner.totalWinnings = money(Number(winner.totalWinnings || 0) + prize);
-        winner.matchesWon = Number(winner.matchesWon || 0) + 1;
-        db.transactions.unshift(makeTransaction(winner.id, 'match_win', prize, 'Multiplayer Pro Match Win', `Rank #1 • ${required} Players`, 'match', { matchId: duelId, gameType: sessions[0]?.gameType || 'block_puzzle', playerCount: required }));
-      }
-    }
-  } else {
-    for (const session of sessions) {
-      const u = db.users.find(x => x.id === session.userId);
-      if (u && !session.refunded) {
-        u.gamingBalance = money(Number(u.gamingBalance || 0) + Number(session.entryFee || 0));
-        session.refunded = true;
-        db.transactions.unshift(makeTransaction(u.id, 'refund', Number(session.entryFee || 0), 'Multiplayer Pro Match Draw Refund', `Draw • ${required} Players`, 'match', { matchId: duelId, gameType: sessions[0]?.gameType || 'block_puzzle', playerCount: required }));
-      }
-    }
+  for (const session of ranked) {
+    const prize = money(Number(distribution[session.groupRank - 1] || 0));
+    if (prize <= 0) continue;
+    const winner = db.users.find(u => u.id === session.userId);
+    if (!winner) continue;
+    winner.winningBalance = money(Number(winner.winningBalance || 0) + prize);
+    winner.totalWinnings = money(Number(winner.totalWinnings || 0) + prize);
+    winner.matchesWon = Number(winner.matchesWon || 0) + 1;
+    db.transactions.unshift(makeTransaction(winner.id, 'match_win', prize, 'Multiplayer Pro Match Prize', `Rank #${session.groupRank} • ${required} Players`, 'match', { matchId: duelId, gameType: sessions[0]?.gameType || 'block_puzzle', playerCount: required, rank: session.groupRank }));
   }
   return true;
 }
@@ -512,7 +517,8 @@ function publicTournament(db, t, currentUserId=null) {
   const mode=tournamentEndMode(t);
   const endsAt=t.endsAt || null;
   const timeRemainingMs=mode==='TIME' && endsAt ? Math.max(0, Date.parse(endsAt)-Date.now()) : null;
-  return {...t, endMode:mode, playerCount:entries.length, registeredPlayers:entries.length, full, joined, registrationClosed:full || mode==='TIME' && t.status!=='ACTIVE', endsAt, timeRemainingMs, entries:ranked};
+  const prizeDistribution = (Array.isArray(t.prizes) ? t.prizes : []).map((v,i)=>({rank:i+1,amount:Number(v||0)})).filter(x=>x.amount>0);
+  return {...t, endMode:mode, playerCount:entries.length, registeredPlayers:entries.length, full, joined, registrationClosed:full || mode==='TIME' && t.status!=='ACTIVE', endsAt, timeRemainingMs, prizeDistribution, prizeWinnerCount:prizeDistribution.length, entries:ranked};
 }
 
 app.get('/api/tournaments', auth, async (req,res) => {
@@ -553,6 +559,18 @@ app.post('/api/admin/tournaments', auth, admin, async (req,res) => {
 });
 app.patch('/api/admin/tournaments/:id', auth, admin, async (req,res) => {
   const t=(req.db.tournaments||[]).find(x=>x.id===req.params.id); if(!t)return res.status(404).json({message:'Tournament not found.'}); const b=req.body||{};
+  // An ENDED tournament can be reused only after all Prize Reviews are complete.
+  // Reusing it starts a clean new round so old players/payouts can never be paid twice.
+  const wantsActive = b.status!==undefined ? String(b.status).toUpperCase()==='ACTIVE' : b.active===true;
+  if(t.status==='ENDED' && wantsActive){
+    if(t.payoutStatus==='PENDING_APPROVAL' || (Array.isArray(t.payouts) && t.payouts.some(p=>p.status==='PENDING'))){
+      return res.status(400).json({message:'Prize Approval সম্পূর্ণ হওয়ার আগে শেষ হওয়া Tournament আবার Active করা যাবে না।'});
+    }
+    req.db.tournamentEntries=(req.db.tournamentEntries||[]).filter(e=>e.tournamentId!==t.id);
+    t.finalEntries=null; t.payouts=[]; t.payoutStatus='NOT_READY'; t.registrationClosed=false;
+    t.startedAt=now(); t.finalizedAt=null;
+    t.endsAt=t.endMode==='TIME' ? new Date(Date.parse(t.startedAt)+Number(t.durationMinutes||0)*60000).toISOString() : null;
+  }
   const currentEntries=ensureTournamentEntries(req.db,t);
   if(b.name!==undefined)t.name=safeText(b.name,100);
   if(b.entryFee!==undefined)t.entryFee=money(Number(b.entryFee));
@@ -576,18 +594,35 @@ app.patch('/api/admin/tournaments/:id', auth, admin, async (req,res) => {
   }
   if((t.prizes||[]).length > Number(t.maxPlayers||0))return res.status(400).json({message:'Prize Distribution-এর Rank Max Players-এর বেশি হতে পারবে না।'});
   if((t.prizes||[]).reduce((a,x)=>a+x,0)>Number(t.prizePool||0))return res.status(400).json({message:'Prize Distribution-এর মোট টাকা Prize Pool-এর বেশি হতে পারবে না।'});
-  if(b.status!==undefined && t.status!=='ENDED'){
-    const nextStatus=String(b.status);
-    if(nextStatus==='ACTIVE' && t.status!=='ACTIVE' && tournamentEndMode(t)==='TIME'){
-      t.startedAt=now();
-      t.endsAt=new Date(Date.parse(t.startedAt)+Number(t.durationMinutes||0)*60000).toISOString();
+  if(b.status!==undefined){
+    const nextStatus=String(b.status).toUpperCase()==='ACTIVE'?'ACTIVE':'INACTIVE';
+    if(nextStatus==='ACTIVE' && t.status!=='ACTIVE'){
+      t.startedAt=t.startedAt||now();
+      if(tournamentEndMode(t)==='TIME') t.endsAt=new Date(Date.parse(t.startedAt)+Number(t.durationMinutes||0)*60000).toISOString();
+    }
+    t.status=nextStatus;
+  }
+  if(b.active!==undefined && b.status===undefined){
+    const nextStatus=Boolean(b.active)?'ACTIVE':'INACTIVE';
+    if(nextStatus==='ACTIVE' && t.status!=='ACTIVE'){
+      t.startedAt=t.startedAt||now();
+      if(tournamentEndMode(t)==='TIME') t.endsAt=new Date(Date.parse(t.startedAt)+Number(t.durationMinutes||0)*60000).toISOString();
     }
     t.status=nextStatus;
   }
   if(b.showOnHome!==undefined)t.showOnHome=Boolean(b.showOnHome); if(b.displayOrder!==undefined)t.displayOrder=Number(b.displayOrder)||0;
   t.registrationClosed=currentEntries.length>=Number(t.maxPlayers||0); t.updatedAt=now(); await saveDb(req.db); res.json({tournament:publicTournament(req.db,t)});
 });
-app.delete('/api/admin/tournaments/:id', auth, admin, async (req,res) => { const t=(req.db.tournaments||[]).find(x=>x.id===req.params.id); if(!t)return res.status(404).json({message:'Tournament not found.'}); const used=(req.db.blockPuzzleMatches||[]).some(m=>m.tournamentId===t.id); if(used)return res.status(400).json({message:'যে Tournament-এ player আছে সেটি delete করা যাবে না।'}); req.db.tournaments=(req.db.tournaments||[]).filter(x=>x.id!==t.id); req.db.tournamentEntries=(req.db.tournamentEntries||[]).filter(x=>x.tournamentId!==t.id); await saveDb(req.db); res.json({ok:true}); });
+app.delete('/api/admin/tournaments/:id', auth, admin, async (req,res) => {
+  const t=(req.db.tournaments||[]).find(x=>x.id===req.params.id); if(!t)return res.status(404).json({message:'Tournament not found.'});
+  const pending=Array.isArray(t.payouts)&&t.payouts.some(p=>p.status==='PENDING');
+  if(t.status!=='ENDED'){
+    const used=(req.db.blockPuzzleMatches||[]).some(m=>m.tournamentId===t.id);
+    if(used)return res.status(400).json({message:'যে Tournament-এ player আছে সেটি আগে শেষ করতে হবে।'});
+  }
+  if(pending || t.payoutStatus==='PENDING_APPROVAL') return res.status(400).json({message:'Prize Approval সম্পূর্ণ হওয়ার আগে Tournament delete করা যাবে না।'});
+  req.db.tournaments=(req.db.tournaments||[]).filter(x=>x.id!==t.id); req.db.tournamentEntries=(req.db.tournamentEntries||[]).filter(x=>x.tournamentId!==t.id); await saveDb(req.db); res.json({ok:true});
+});
 
 app.post('/api/tournaments/:id/join', auth, async (req,res) => {
   try {
@@ -707,6 +742,7 @@ app.post('/api/block-puzzle/matches/start', auth, async (req, res) => {
       const configuredFees = proMatchFees(db);
       const feeIndex = configuredFees.findIndex(fee => Math.abs(fee - entryFee) < 0.000001);
       let prizeAmount;
+      let prizeDistribution = [];
       if (gameType === 'nut_sort') {
         const game = (db.games || []).find(g => g.gameType === 'nut_sort');
         if (!game || game.active === false) throw Object.assign(new Error('Nut Sort বর্তমানে Active নয়।'), { statusCode: 409 });
@@ -715,8 +751,21 @@ app.post('/api/block-puzzle/matches/start', auth, async (req, res) => {
         if (gameFee <= 0 || Math.abs(gameFee - entryFee) > 0.000001) throw Object.assign(new Error('Nut Sort-এর Entry Fee বর্তমানে Admin সেটিংসের সাথে মিলছে না।'), { statusCode: 400 });
         prizeAmount = gamePrize > 0 ? gamePrize : requestedPrize;
         if (prizeAmount <= 0) throw Object.assign(new Error('Nut Sort Prize সেট করা নেই।'), { statusCode: 400 });
+      } else if (playerCount > 2) {
+        const config = multiplayerProMatchConfig(db, playerCount);
+        if (!config || config.active === false) throw Object.assign(new Error(`${playerCount} Players Pro Match বর্তমানে Active নয়।`), { statusCode: 409 });
+        const configuredEntry = money(Number(config.entryFee || 0));
+        if (configuredEntry <= 0 || Math.abs(configuredEntry - entryFee) > 0.000001) throw Object.assign(new Error(`${playerCount} Players Pro Match-এর Entry Fee Admin সেটিংসের সাথে মিলছে না।`), { statusCode: 400 });
+        prizeDistribution = multiplayerPrizes(config);
+        if (!prizeDistribution.length) throw Object.assign(new Error(`${playerCount} Players Pro Match-এর Prize Distribution সেট করা নেই।`), { statusCode: 400 });
+        const maxWinners = Math.min(playerCount, prizeDistribution.length);
+        if (prizeDistribution.length > playerCount) throw Object.assign(new Error('Prize winners Player Count-এর বেশি হতে পারবে না।'), { statusCode: 400 });
+        if (prizeDistribution.reduce((a,x)=>a+x,0) > money(entryFee * playerCount)) throw Object.assign(new Error('Prize Distribution-এর মোট টাকা Match-এর মোট Entry Fee-এর বেশি হতে পারবে না।'), { statusCode: 400 });
+        prizeDistribution = prizeDistribution.slice(0, maxWinners);
+        prizeAmount = prizeDistribution[0];
       } else {
-        prizeAmount = playerCount > 2 ? requestedPrize : (feeIndex >= 0 ? PRO_MATCH_PRIZES[feeIndex] : null);
+        prizeAmount = feeIndex >= 0 ? PRO_MATCH_PRIZES[feeIndex] : null;
+        prizeDistribution = prizeAmount > 0 ? [prizeAmount] : [];
         if (prizeAmount == null || prizeAmount <= 0) throw Object.assign(new Error('এই Pro Match entry fee বর্তমানে উপলব্ধ নয়।'), { statusCode: 400 });
       }
       if (Number(req.user.gamingBalance) < entryFee) throw Object.assign(new Error('অপর্যাপ্ত গেমিং ব্যালেন্স! দয়া করে ডিপোজিট করুন।'), { statusCode: 400 });
@@ -735,7 +784,7 @@ app.post('/api/block-puzzle/matches/start', auth, async (req, res) => {
         liveState: null,
         liveUpdatedAt: null,
         userId: req.user.id, userName: req.user.name, userPhone: req.user.phone,
-        entryFee, prizeAmount, playerCount, status: 'PLAYING', createdAt, startsAt: gameStartedAt, gameStartedAt,
+        entryFee, prizeAmount, prizeDistribution, playerCount, status: 'PLAYING', createdAt, startsAt: gameStartedAt, gameStartedAt,
         pendingUntil, refunded: false
       };
       req.user.gamingBalance = money(req.user.gamingBalance - entryFee);
@@ -1524,12 +1573,18 @@ app.patch('/api/settings', auth, admin, async (req, res) => {
     if (b.multiplayerProMatches !== undefined) {
     if (!Array.isArray(b.multiplayerProMatches)) return res.status(400).json({message:'Multiplayer Pro Match settings invalid.'});
     const allowed = new Set([3,5,7,10]);
-    const rows = b.multiplayerProMatches.map((x,i)=>({
-      id: safeText(x?.id || `mp_${x?.players || i}`, 40), players: Math.floor(Number(x?.players)),
-      entryFee: money(Math.max(0, Number(x?.entryFee)||0)), prizeAmount: money(Math.max(0, Number(x?.prizeAmount)||0)),
-      active: Boolean(x?.active), showOnHome: x?.showOnHome !== false, displayOrder: Number.isFinite(Number(x?.displayOrder)) ? Number(x.displayOrder) : i+1, name: safeText(x?.name || `Multiplayer Pro Match • ${Number(x?.players)} Players`, 100)
-    }));
-    if (rows.length > 4 || rows.some(x=>!allowed.has(x.players)||x.entryFee<=0||x.prizeAmount<=0) || new Set(rows.map(x=>x.players)).size !== rows.length) return res.status(400).json({message:'Multiplayer Pro Match-এ শুধু 3, 5, 7, 10 player option এবং positive entry/prize দিন।'});
+    const rows = b.multiplayerProMatches.map((x,i)=>{
+      const players = Math.floor(Number(x?.players));
+      const legacyPrize = money(Math.max(0, Number(x?.prizeAmount)||0));
+      const prizes = (Array.isArray(x?.prizes) ? x.prizes : (legacyPrize > 0 ? [legacyPrize] : []))
+        .map(Number).filter(n => Number.isFinite(n) && n > 0).map(money);
+      return {
+        id: safeText(x?.id || `mp_${x?.players || i}`, 40), players,
+        entryFee: money(Math.max(0, Number(x?.entryFee)||0)), prizeAmount: prizes[0] || 0, prizes,
+        active: Boolean(x?.active), showOnHome: x?.showOnHome !== false, displayOrder: Number.isFinite(Number(x?.displayOrder)) ? Number(x.displayOrder) : i+1, name: safeText(x?.name || `Multiplayer Pro Match • ${players} Players`, 100)
+      };
+    });
+    if (rows.length !== 4 || rows.some(x=>!allowed.has(x.players)||x.entryFee<=0||!x.prizes.length||x.prizes.length>x.players||x.prizes.reduce((a,v)=>a+v,0)>money(x.entryFee*x.players)) || new Set(rows.map(x=>x.players)).size !== rows.length) return res.status(400).json({message:'3, 5, 7, 10 player-এর জন্য Entry Fee দিন এবং Prize Distribution-এ 1 থেকে ওই player count পর্যন্ত rank prize দিন। মোট prize মোট entry fee-এর বেশি হতে পারবে না।'});
     paymentPatch.multiplayerProMatches = rows.sort((a,b)=>a.displayOrder-b.displayOrder);
   }
 if (b.proMatchFees !== undefined) { const fees = Array.isArray(b.proMatchFees) ? b.proMatchFees.map(Number) : []; if (fees.length !== 6 || fees.some(n => !Number.isFinite(n) || n <= 0) || new Set(fees.map(n => n.toFixed(2))).size !== 6) return res.status(400).json({ message: 'Pro Match entry fee অবশ্যই ৬টি আলাদা positive amount হতে হবে।' }); paymentPatch.proMatchFees = fees.map(n => money(n)); }

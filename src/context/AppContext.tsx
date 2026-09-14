@@ -11,7 +11,7 @@ import {
   PaymentSettings 
 } from '../types';
 const initialUser: User = { id: '', name: '', phone: '', isAdmin: false, ludoKingName: '', gamingBalance: 0, winningBalance: 0, matchesPlayed: 0, totalWinnings: 0, referralCode: '', joinedAt: '' };
-const initialPaymentSettings: PaymentSettings = { bkash: '', bkashAgent: '', nagad: '', rocket: '', upay: '', binanceUsdt: '', bkashAgentEnabled: true, binanceUsdtEnabled: true, depositBkashEnabled: true, depositBkashAgentEnabled: true, depositNagadEnabled: true, depositRocketEnabled: true, depositUpayEnabled: true, depositBinanceUsdtEnabled: true, withdrawBkashEnabled: true, withdrawNagadEnabled: true, withdrawRocketEnabled: true, withdrawUpayEnabled: true, withdrawBinanceUsdtEnabled: true, whatsappSupport: '', telegramLink: '', marqueeNotice: '', popupNoticeTitle: '', popupNoticeText: '', proMatchFees: [20, 30, 60, 120, 250, 500], multiplayerProMatches: [{id:'mp_3',players:3,entryFee:20,prizeAmount:50,active:false,showOnHome:true,displayOrder:1},{id:'mp_5',players:5,entryFee:30,prizeAmount:80,active:false,showOnHome:true,displayOrder:2},{id:'mp_7',players:7,entryFee:60,prizeAmount:160,active:false,showOnHome:true,displayOrder:3},{id:'mp_10',players:10,entryFee:120,prizeAmount:300,active:false,showOnHome:true,displayOrder:4}] };
+const initialPaymentSettings: PaymentSettings = { bkash: '', bkashAgent: '', nagad: '', rocket: '', upay: '', binanceUsdt: '', bkashAgentEnabled: true, binanceUsdtEnabled: true, depositBkashEnabled: true, depositBkashAgentEnabled: true, depositNagadEnabled: true, depositRocketEnabled: true, depositUpayEnabled: true, depositBinanceUsdtEnabled: true, withdrawBkashEnabled: true, withdrawNagadEnabled: true, withdrawRocketEnabled: true, withdrawUpayEnabled: true, withdrawBinanceUsdtEnabled: true, whatsappSupport: '', telegramLink: '', marqueeNotice: '', popupNoticeTitle: '', popupNoticeText: '', proMatchFees: [20, 30, 60, 120, 250, 500], multiplayerProMatches: [{id:'mp_3',players:3,entryFee:20,prizeAmount:40,prizes:[40],active:false,showOnHome:true,displayOrder:1},{id:'mp_5',players:5,entryFee:30,prizeAmount:80,prizes:[80],active:false,showOnHome:true,displayOrder:2},{id:'mp_7',players:7,entryFee:60,prizeAmount:160,prizes:[160],active:false,showOnHome:true,displayOrder:3},{id:'mp_10',players:10,entryFee:120,prizeAmount:300,prizes:[300],active:false,showOnHome:true,displayOrder:4}] };
 import confetti from 'canvas-confetti';
 import { backendApi } from '../services/backendApi';
 
@@ -287,30 +287,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const getMyPendingGames = async () => {
-    // History/Pending must not disappear just because the aggregated feed is
-    // temporarily empty or unavailable. Fall back to the authoritative
-    // per-player Pro Match history endpoint.
+    // Build the feed from BOTH server sources. The aggregated /pending-games
+    // endpoint is useful for tournaments/other games, but the authoritative
+    // per-player Pro Match history endpoint must also be included. This makes
+    // sure a just-submitted Pro Match cannot disappear from Pending & History
+    // because one feed is briefly empty/stale.
+    const merged = new Map<string, any>();
+
     try {
       const data = await backendApi.pendingGames();
-      const items = data.items || [];
-      if (items.length) return items;
+      for (const item of (data.items || [])) {
+        const key = String(item.matchId || item.id);
+        if (key) merged.set(key, item);
+      }
     } catch (e) {
-      console.warn('Pending-games feed unavailable; using match history fallback.', e);
+      console.warn('Pending-games feed unavailable; continuing with Pro Match history.', e);
     }
+
     try {
       const mine = await backendApi.myBlockPuzzleMatches();
-      return (mine.matches || []).map((m: any) => ({
-        ...m,
-        type: m.tournamentId ? 'TOURNAMENT_MATCH' : 'PRO_MATCH',
-        gameType: m.gameType || 'block_puzzle',
-        title: m.gameType === 'nut_sort' ? 'Nut Sort 1v1' : 'Pro Match',
-        prizeAmount: Number(m.prizeAmount || 0),
-        opponent: m.opponent || null,
-      }));
+      for (const m of (mine.matches || [])) {
+        const item = {
+          ...m,
+          type: m.tournamentId ? 'TOURNAMENT_MATCH' : 'PRO_MATCH',
+          gameType: m.gameType || 'block_puzzle',
+          title: m.gameType === 'nut_sort' ? 'Nut Sort 1v1' : 'Pro Match',
+          prizeAmount: Number(m.prizeAmount || 0),
+          opponent: m.opponent || null,
+        };
+        const key = String(item.matchId || item.id);
+        if (key) merged.set(key, { ...(merged.get(key) || {}), ...item });
+      }
     } catch (e) {
-      console.warn('Pro Match history fallback unavailable.', e);
-      return [];
+      console.warn('Pro Match history feed unavailable.', e);
     }
+
+    return Array.from(merged.values()).sort((a: any, b: any) =>
+      (Date.parse(b.createdAt || '') || 0) - (Date.parse(a.createdAt || '') || 0)
+    );
   };
 
   const getBlockPuzzleMatchStatus = async (matchId: string) => {
