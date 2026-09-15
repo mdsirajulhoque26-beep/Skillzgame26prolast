@@ -23,6 +23,7 @@ import { ReferModal } from './components/modals/ReferModal';
 import { SupportModal } from './components/modals/SupportModal';
 import { VideoTutorialModal } from './components/modals/VideoTutorialModal';
 import { DailyLimitModal } from './components/modals/DailyLimitModal';
+import { RulesModal } from './components/modals/RulesModal';
 
 const MainLayout: React.FC = () => {
   const { isLoggedIn, currentTab } = useApp();
@@ -66,6 +67,7 @@ const MainLayout: React.FC = () => {
       <SupportModal />
       <VideoTutorialModal />
       <DailyLimitModal />
+      <RulesModal />
     </div>
   );
 };

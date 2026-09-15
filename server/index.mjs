@@ -919,6 +919,65 @@ app.get('/api/cron/expire-pending', async (req, res) => {
   }
 });
 
+app.post('/api/match-disputes', auth, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const matchId = safeText(b.matchId, 120);
+    const problemType = safeText(b.problemType, 80);
+    const details = safeText(b.details, 1200);
+    const allowedTypes = new Set(['NETWORK', 'GAME_LOAD', 'AUTO_ABORT', 'SCORE', 'SERVER_ERROR', 'OTHER']);
+    if (!matchId || !allowedTypes.has(problemType)) return res.status(400).json({ message: 'Match ID and problem type are required.' });
+    if (!details) return res.status(400).json({ message: 'সমস্যার বিস্তারিত লিখুন।' });
+    const match = (req.db.blockPuzzleMatches || []).find(m => String(m.id) === matchId && String(m.userId) === String(req.user.id));
+    if (!match) return res.status(404).json({ message: 'Match পাওয়া যায়নি।' });
+    const disputes = Array.isArray(req.db.matchDisputes) ? req.db.matchDisputes : [];
+    const existing = disputes.find(d => String(d.matchId) === matchId && String(d.userId) === String(req.user.id) && ['OPEN','UNDER_REVIEW'].includes(String(d.status || '').toUpperCase()));
+    if (existing) return res.status(409).json({ message: 'এই Match-এর একটি অভিযোগ ইতিমধ্যে খোলা আছে।', dispute: existing });
+    const dispute = {
+      id: id('dispute'), matchId, userId: req.user.id, userName: req.user.name,
+      opponentUserId: match.opponentUserId || null, problemType, details,
+      matchStatus: String(match.status || ''), matchScore: match.score == null ? null : Number(match.score),
+      entryFee: Number(match.entryFee || 0), createdAt: now(), status: 'OPEN', adminNote: '', resolvedAt: null,
+    };
+    req.db.matchDisputes = [dispute, ...disputes];
+    await saveDbPartial(req.db, ['matchDisputes']);
+    res.status(201).json({ dispute });
+  } catch (err) { res.status(503).json({ message: err?.message || 'Complaint submit করা যায়নি।' }); }
+});
+
+app.get('/api/admin/match-disputes', auth, admin, async (req, res) => {
+  try {
+    const db = await loadDb();
+    const disputes = Array.isArray(db.matchDisputes) ? db.matchDisputes : [];
+    const users = Array.isArray(db.users) ? db.users : [];
+    const matches = Array.isArray(db.blockPuzzleMatches) ? db.blockPuzzleMatches : [];
+    const items = disputes.map(d => {
+      const match = matches.find(m => String(m.id) === String(d.matchId));
+      const user = users.find(u => String(u.id) === String(d.userId));
+      const opp = users.find(u => String(u.id) === String(d.opponentUserId));
+      return { ...d, playerName: user?.name || d.userName || 'Player', playerPhone: user?.phone || '', opponentName: opp?.name || 'Opponent', liveMatchStatus: match?.status || d.matchStatus, liveScore: match?.score == null ? d.matchScore : Number(match.score) };
+    });
+    res.json({ disputes: items });
+  } catch (err) { res.status(503).json({ message: err?.message || 'Match disputes unavailable.' }); }
+});
+
+app.patch('/api/admin/match-disputes/:id', auth, admin, async (req, res) => {
+  try {
+    const status = safeText(req.body?.status, 30).toUpperCase();
+    if (!['RESOLVED','REJECTED'].includes(status)) return res.status(400).json({ message: 'Invalid dispute status.' });
+    const disputes = Array.isArray(req.db.matchDisputes) ? req.db.matchDisputes : [];
+    const dispute = disputes.find(d => String(d.id) === String(req.params.id));
+    if (!dispute) return res.status(404).json({ message: 'Complaint পাওয়া যায়নি।' });
+    dispute.status = status;
+    dispute.adminNote = safeText(req.body?.adminNote, 1000);
+    dispute.resolvedAt = now();
+    dispute.resolvedBy = req.user.id;
+    req.db.matchDisputes = disputes;
+    await saveDbPartial(req.db, ['matchDisputes']);
+    res.json({ dispute });
+  } catch (err) { res.status(503).json({ message: err?.message || 'Complaint update করা যায়নি।' }); }
+});
+
 app.get('/api/history', async (req, res) => {
   try {
     const authHeader = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');

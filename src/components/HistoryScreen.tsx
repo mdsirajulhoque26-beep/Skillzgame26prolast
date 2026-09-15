@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { History, Trophy, Swords, Medal, RefreshCw, ArrowLeft, Gamepad2 } from 'lucide-react';
+import { History, Trophy, Swords, Medal, RefreshCw, ArrowLeft, Gamepad2, AlertTriangle, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { backendApi } from '../services/backendApi';
 
 type Filter = 'ALL' | 'PRO' | 'TOURNAMENT' | 'OTHER';
 
@@ -43,6 +44,10 @@ export const HistoryScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>('ALL');
   const [error, setError] = useState('');
+  const [complaintMatch, setComplaintMatch] = useState<any | null>(null);
+  const [problemType, setProblemType] = useState('NETWORK');
+  const [details, setDetails] = useState('');
+  const [submittingComplaint, setSubmittingComplaint] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -96,6 +101,20 @@ export const HistoryScreen: React.FC = () => {
     if (filter === 'ALL') return completed;
     return completed.filter((m) => getCategory(m) === filter);
   }, [completed, filter]);
+
+  const submitComplaint = async () => {
+    if (!complaintMatch || !details.trim()) return;
+    setSubmittingComplaint(true);
+    try {
+      await backendApi.createMatchDispute({ matchId: String(complaintMatch.matchId || complaintMatch.id), problemType, details: details.trim() });
+      setComplaintMatch(null);
+      setDetails('');
+      setProblemType('NETWORK');
+      window.alert('আপনার অভিযোগ সফলভাবে জমা হয়েছে। Admin এটি Match record দেখে review করবে।');
+    } catch (e:any) {
+      window.alert(e?.message || 'অভিযোগ জমা দেওয়া যায়নি।');
+    } finally { setSubmittingComplaint(false); }
+  };
 
   const stats = useMemo(() => ({
     total: completed.length,
@@ -213,11 +232,42 @@ export const HistoryScreen: React.FC = () => {
                   <span>{date}</span>
                   <span>{entry > 0 ? `Entry ${money(entry)}` : 'Completed Match'}</span>
                 </div>
+                {getCategory(m) === 'PRO' && (m?.status || m?.outcome) && (
+                  <div className="px-3 pb-3">
+                    <button onClick={() => { setComplaintMatch(m); setProblemType('NETWORK'); setDetails(''); }} className="w-full rounded-xl border border-red-500/20 bg-red-500/10 py-2 text-[10px] font-black text-red-300 flex items-center justify-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5" /> Report Match Problem
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       )}
+      {complaintMatch && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3">
+          <div className="w-full max-w-sm rounded-2xl bg-[#121935] border border-red-500/30 p-4 shadow-2xl">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div><h3 className="font-black text-white">Report Match Problem</h3><p className="text-[10px] text-slate-500 mt-1">Match #{String(complaintMatch.matchId || complaintMatch.id).slice(-8)}</p></div>
+              <button onClick={() => setComplaintMatch(null)} className="w-8 h-8 rounded-lg bg-[#0b1022] text-slate-400 flex items-center justify-center"><X className="w-4 h-4" /></button>
+            </div>
+            <label className="block text-[10px] font-bold text-slate-400 mb-1">সমস্যার ধরন</label>
+            <select value={problemType} onChange={e => setProblemType(e.target.value)} className="w-full rounded-xl bg-[#0b1022] border border-indigo-900 px-3 py-2.5 text-xs text-white outline-none">
+              <option value="NETWORK">Network / Connection Problem</option>
+              <option value="GAME_LOAD">Game did not load</option>
+              <option value="AUTO_ABORT">Match automatically aborted</option>
+              <option value="SCORE">Score / Result Problem</option>
+              <option value="SERVER_ERROR">Server Error</option>
+              <option value="OTHER">Other</option>
+            </select>
+            <label className="block text-[10px] font-bold text-slate-400 mt-3 mb-1">বিস্তারিত</label>
+            <textarea value={details} onChange={e => setDetails(e.target.value)} maxLength={1200} rows={5} placeholder="কী সমস্যা হয়েছিল বিস্তারিত লিখুন..." className="w-full rounded-xl bg-[#0b1022] border border-indigo-900 px-3 py-2.5 text-xs text-white placeholder:text-slate-600 outline-none resize-none" />
+            <button disabled={submittingComplaint || !details.trim()} onClick={submitComplaint} className="w-full mt-3 rounded-xl bg-red-500 py-2.5 text-xs font-black text-white disabled:opacity-40">{submittingComplaint ? 'Submitting…' : 'Submit Complaint'}</button>
+            <p className="text-[9px] text-slate-500 text-center mt-2">Server record ও Match details যাচাই করে Admin সিদ্ধান্ত নেবে।</p>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

@@ -27,7 +27,8 @@ import {
   Lock,
   Radio,
   Image as ImageIcon,
-  Trophy
+  Trophy,
+  MessageSquareWarning
 } from 'lucide-react';
 import { Match, MatchCategory } from '../types';
 import { backendApi } from '../services/backendApi';
@@ -62,7 +63,7 @@ export const AdminPanel: React.FC = () => {
   } = useApp();
 
   const [activeAdminTab, setActiveAdminTab] = useState<
-    'dashboard' | 'matches' | 'games' | 'tournaments' | 'leaderboard' | 'results' | 'deposits' | 'withdraws' | 'users' | 'referrals' | 'settings'
+    'dashboard' | 'matches' | 'games' | 'tournaments' | 'leaderboard' | 'results' | 'deposits' | 'withdraws' | 'users' | 'referrals' | 'disputes' | 'settings'
   >('dashboard');
   const [blockPuzzleMatches, setBlockPuzzleMatches] = useState<any[]>([]);
   const [games, setGames] = useState<any[]>([]);
@@ -81,6 +82,7 @@ export const AdminPanel: React.FC = () => {
   const [lbWinPoints, setLbWinPoints] = useState(10);
   const [lbPrizes, setLbPrizes] = useState([500, 300, 200]);
   const [referrals, setReferrals] = useState<any[]>([]);
+  const [disputes, setDisputes] = useState<any[]>([]);
 
   useEffect(() => {
     refreshUsers();
@@ -97,6 +99,7 @@ export const AdminPanel: React.FC = () => {
     if (activeAdminTab === 'leaderboard') refreshLeaderboards();
     if (activeAdminTab === 'tournaments') refreshTournaments();
     if (activeAdminTab === 'referrals') refreshReferrals();
+    if (activeAdminTab === 'disputes') refreshDisputes();
   }, [activeAdminTab]);
 
   const refreshGames = async () => {
@@ -117,6 +120,8 @@ export const AdminPanel: React.FC = () => {
 
   const refreshTournaments = async () => { try { const data=await backendApi.adminTournaments(); setTournaments(data.tournaments||[]); } catch(e){ console.error('Failed to load tournaments:',e); } };
   const refreshReferrals = async () => { try { const data = await backendApi.adminReferrals(); setReferrals(data.referrals || []); } catch (e) { console.error('Failed to load referrals:', e); } };
+  const refreshDisputes = async () => { try { const data = await backendApi.adminMatchDisputes(); setDisputes(data.disputes || []); } catch (e) { console.error('Failed to load match disputes:', e); } };
+  const updateDispute = async (d:any, status:'RESOLVED'|'REJECTED') => { const note = window.prompt(status === 'RESOLVED' ? 'Resolution note (optional):' : 'Reject reason (optional):', d.adminNote || '') ?? ''; try { await backendApi.updateMatchDispute(d.id, status, note); await refreshDisputes(); showToast(status === 'RESOLVED' ? 'Complaint resolved হয়েছে।' : 'Complaint rejected হয়েছে।'); } catch (e:any) { showToast(e?.message || 'Complaint update করা যায়নি।', 'error'); } };
   const approveReferral = async (r:any) => { try { await backendApi.approveAdminReferral(r.id); await refreshReferrals(); showToast('Referral bonus অনুমোদন হয়েছে।'); } catch (e:any) { showToast(e?.message || 'Referral approve করা যায়নি।', 'error'); } };
   const rejectReferral = async (r:any) => { const reason = window.prompt('Reject করার কারণ (ঐচ্ছিক):', '') ?? ''; try { await backendApi.rejectAdminReferral(r.id, reason); await refreshReferrals(); showToast('Referral reject করা হয়েছে।'); } catch (e:any) { showToast(e?.message || 'Referral reject করা যায়নি।', 'error'); } };
   const openNewTournament = () => { setEditingTournament(null); setTournamentForm({...emptyTournament}); setShowTournamentModal(true); };
@@ -542,6 +547,16 @@ export const AdminPanel: React.FC = () => {
           </button>
 
           <button
+            id="admin-tab-disputes"
+            onClick={() => setActiveAdminTab('disputes')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all relative ${activeAdminTab === 'disputes' ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20' : 'text-slate-400 hover:text-slate-200 hover:bg-indigo-950/50'}`}
+          >
+            <MessageSquareWarning className="w-3.5 h-3.5" />
+            <span>ম্যাচ অভিযোগ</span>
+            {disputes.filter(d => ['OPEN','UNDER_REVIEW'].includes(String(d.status || '').toUpperCase())).length > 0 && <span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full">{disputes.filter(d => ['OPEN','UNDER_REVIEW'].includes(String(d.status || '').toUpperCase())).length}</span>}
+          </button>
+
+          <button
             id="admin-tab-settings"
             onClick={() => setActiveAdminTab('settings')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
@@ -892,6 +907,29 @@ export const AdminPanel: React.FC = () => {
         )}
 
         {/* ================= 3. RESULT VERIFICATION TAB ================= */}
+        {activeAdminTab === 'disputes' && (
+          <div className="space-y-4 max-w-5xl">
+            <div className="bg-[#121935] p-4 rounded-2xl border border-red-500/20">
+              <h2 className="text-base font-black text-white flex items-center gap-2"><MessageSquareWarning className="w-5 h-5 text-red-300" /> Match Disputes / অভিযোগ</h2>
+              <p className="text-xs text-slate-400 mt-1">Player-এর technical/network complaint এখানে দেখুন। Server record ও match data যাচাই করে সিদ্ধান্ত নিন।</p>
+            </div>
+            {disputes.length === 0 ? (
+              <div className="bg-[#121935] p-8 rounded-2xl border border-indigo-900/60 text-center text-sm text-slate-500">কোনো Match complaint নেই।</div>
+            ) : disputes.map((d:any) => (
+              <div key={d.id} className="bg-[#121935] p-4 rounded-2xl border border-indigo-900/60 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div><div className="font-black text-white text-sm">{d.playerName} <span className="text-slate-500 font-normal">vs</span> {d.opponentName}</div><div className="text-[10px] text-slate-500 mt-1">Match #{String(d.matchId).slice(-8)} • {new Date(d.createdAt).toLocaleString('en-GB')}</div></div>
+                  <span className={`rounded-lg px-2 py-1 text-[9px] font-black ${d.status === 'OPEN' ? 'bg-red-500/15 text-red-300' : d.status === 'RESOLVED' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-500/15 text-slate-300'}`}>{d.status}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[10px]"><div className="bg-[#0b1022] rounded-xl p-2"><span className="text-slate-500">Problem</span><div className="font-bold text-amber-300 mt-1">{d.problemType}</div></div><div className="bg-[#0b1022] rounded-xl p-2"><span className="text-slate-500">Match Status / Score</span><div className="font-bold text-cyan-300 mt-1">{d.liveMatchStatus || '—'} / {d.liveScore ?? '—'}</div></div></div>
+                <div className="bg-[#0b1022] rounded-xl p-3 text-xs text-slate-300 leading-relaxed">{d.details}</div>
+                {d.adminNote && <div className="text-[10px] text-slate-500">Admin note: {d.adminNote}</div>}
+                {d.status === 'OPEN' && <div className="flex gap-2"><button onClick={() => updateDispute(d,'RESOLVED')} className="flex-1 rounded-xl bg-emerald-500 py-2 text-xs font-black text-slate-950">Resolve</button><button onClick={() => updateDispute(d,'REJECTED')} className="flex-1 rounded-xl bg-red-500/15 border border-red-500/30 py-2 text-xs font-black text-red-300">Reject</button></div>}
+              </div>
+            ))}
+          </div>
+        )}
+
         {activeAdminTab === 'games' && (
           <div className="space-y-5 max-w-5xl">
             <div className="flex items-center justify-between gap-3">

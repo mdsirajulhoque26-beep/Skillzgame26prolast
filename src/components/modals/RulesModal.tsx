@@ -65,9 +65,29 @@ export const RulesModal: React.FC = () => {
 
           <div className="bg-[#0b1022] p-3 rounded-xl border border-indigo-950">
             <h4 className="font-bold text-emerald-400 mb-1 flex items-center gap-1">
-              <span>৫. ইনস্ট্যান্ট ডিপোজিট ও উইথড্রয়াল:</span>
+              <span>৫. ডিপোজিট, উইথড্রয়াল ও ব্যালেন্স:</span>
             </h4>
-            <p>bKash, Nagad ও Rocket এর মাধ্যমে ২৪ ঘণ্টা ইনস্ট্যান্ট ডিপোজিট সুবিধা রয়েছে। সর্বনিম্ন উইথড্রয়াল ৳১০০ টাকা, যা সরাসরি আপনার পার্সোনাল ওয়ালেটে ক্যাশআউট করা যায়।</p>
+            <p>আপনার অ্যাকাউন্টে প্রদর্শিত payment method ও balance rules অনুসরণ করুন। Deposit/withdrawal-এর ক্ষেত্রে approved transaction record-ই চূড়ান্ত reference হিসেবে গণ্য হবে।</p>
+          </div>
+
+          <div className="bg-[#0b1022] p-3 rounded-xl border border-cyan-500/20">
+            <h4 className="font-bold text-cyan-300 mb-1"><span>৬. Match সমস্যা ও অভিযোগ:</span></h4>
+            <p>Network, game load, automatic abort, score বা server error-এর কারণে কোনো Match-এ সমস্যা হলে Match History থেকে সংশ্লিষ্ট Match খুলে “Report Match Problem” দিয়ে অভিযোগ করা যাবে। Match ID, problem type ও বিস্তারিত তথ্য দিন। অভিযোগ server record, match status ও transaction record যাচাই করে review করা হবে।</p>
+          </div>
+
+          <div className="bg-[#0b1022] p-3 rounded-xl border border-amber-500/20">
+            <h4 className="font-bold text-amber-300 mb-1"><span>৭. Technical Dispute:</span></h4>
+            <p>শুধু player-এর বক্তব্যের ভিত্তিতে result পরিবর্তন করা হবে না। প্রমাণিত server-side technical failure হলে কর্তৃপক্ষ প্রযোজ্য correction, refund বা অন্য সমাধানের সিদ্ধান্ত নিতে পারবে। একই Match-এর জন্য duplicate complaint করা যাবে না।</p>
+          </div>
+
+          <div className="bg-[#0b1022] p-3 rounded-xl border border-indigo-950">
+            <h4 className="font-bold text-violet-300 mb-1"><span>৮. Account, Referral ও Fair Use:</span></h4>
+            <p>একাধিক/fake account, self-referral, referral abuse, bot, auto-clicker, script, exploit বা match manipulation নিষিদ্ধ। সন্দেহজনক activity review, suspension বা ban-এর আওতায় আসতে পারে।</p>
+          </div>
+
+          <div className="bg-[#0b1022] p-3 rounded-xl border border-red-500/30">
+            <h4 className="font-bold text-red-300 mb-1"><span>৯. Fraud ও Abuse:</span></h4>
+            <p>ভুয়া transaction, fraud, cheating বা system abuse শনাক্ত হলে সংশ্লিষ্ট account-এর access/bonus/result review বা restriction করা হতে পারে। প্রয়োজন হলে প্রযোজ্য আইন ও কর্তৃপক্ষের নিয়ম অনুসরণ করা হবে।</p>
           </div>
         </div>
 
