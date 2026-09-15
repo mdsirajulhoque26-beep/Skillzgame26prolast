@@ -28,7 +28,9 @@ import {
   Radio,
   Image as ImageIcon,
   Trophy,
-  MessageSquareWarning
+  MessageSquareWarning,
+  MessageCircle,
+  Send
 } from 'lucide-react';
 import { Match, MatchCategory } from '../types';
 import { backendApi } from '../services/backendApi';
@@ -63,7 +65,7 @@ export const AdminPanel: React.FC = () => {
   } = useApp();
 
   const [activeAdminTab, setActiveAdminTab] = useState<
-    'dashboard' | 'matches' | 'games' | 'tournaments' | 'leaderboard' | 'results' | 'deposits' | 'withdraws' | 'users' | 'referrals' | 'disputes' | 'settings'
+    'dashboard' | 'matches' | 'games' | 'tournaments' | 'leaderboard' | 'results' | 'deposits' | 'withdraws' | 'users' | 'referrals' | 'disputes' | 'support' | 'settings'
   >('dashboard');
   const [blockPuzzleMatches, setBlockPuzzleMatches] = useState<any[]>([]);
   const [games, setGames] = useState<any[]>([]);
@@ -83,6 +85,10 @@ export const AdminPanel: React.FC = () => {
   const [lbPrizes, setLbPrizes] = useState([500, 300, 200]);
   const [referrals, setReferrals] = useState<any[]>([]);
   const [disputes, setDisputes] = useState<any[]>([]);
+  const [supportChats, setSupportChats] = useState<any[]>([]);
+  const [selectedSupportChat, setSelectedSupportChat] = useState<any | null>(null);
+  const [supportReply, setSupportReply] = useState('');
+  const [supportSending, setSupportSending] = useState(false);
 
   useEffect(() => {
     refreshUsers();
@@ -100,6 +106,11 @@ export const AdminPanel: React.FC = () => {
     if (activeAdminTab === 'tournaments') refreshTournaments();
     if (activeAdminTab === 'referrals') refreshReferrals();
     if (activeAdminTab === 'disputes') refreshDisputes();
+    if (activeAdminTab === 'support') {
+      refreshSupportChats();
+      const timer = window.setInterval(() => refreshSupportChats(), 4000);
+      return () => window.clearInterval(timer);
+    }
   }, [activeAdminTab]);
 
   const refreshGames = async () => {
@@ -121,6 +132,9 @@ export const AdminPanel: React.FC = () => {
   const refreshTournaments = async () => { try { const data=await backendApi.adminTournaments(); setTournaments(data.tournaments||[]); } catch(e){ console.error('Failed to load tournaments:',e); } };
   const refreshReferrals = async () => { try { const data = await backendApi.adminReferrals(); setReferrals(data.referrals || []); } catch (e) { console.error('Failed to load referrals:', e); } };
   const refreshDisputes = async () => { try { const data = await backendApi.adminMatchDisputes(); setDisputes(data.disputes || []); } catch (e) { console.error('Failed to load match disputes:', e); } };
+  const refreshSupportChats = async () => { try { const data = await backendApi.adminSupportChats(); setSupportChats(data.chats || []); setSelectedSupportChat(prev => prev ? (data.chats || []).find((c:any)=>c.id===prev.id) || prev : (data.chats || [])[0] || null); } catch (e) { console.error('Failed to load support chats:', e); } };
+  const sendSupportReply = async () => { const text=supportReply.trim(); if(!text || !selectedSupportChat || supportSending) return; setSupportSending(true); try { const data=await backendApi.adminSendSupportMessage(selectedSupportChat.id,text); setSelectedSupportChat(data.chat); setSupportChats(prev=>prev.map(c=>c.id===data.chat.id?data.chat:c)); setSupportReply(''); } catch(e:any){ showToast(e?.message||'Reply পাঠানো যায়নি।','error'); } finally { setSupportSending(false); } };
+  const toggleSupportStatus = async () => { if(!selectedSupportChat) return; try { const next=selectedSupportChat.status==='CLOSED'?'OPEN':'CLOSED'; const data=await backendApi.adminUpdateSupportChat(selectedSupportChat.id,next); setSelectedSupportChat(data.chat); setSupportChats(prev=>prev.map(c=>c.id===data.chat.id?data.chat:c)); } catch(e:any){ showToast(e?.message||'Chat status update করা যায়নি।','error'); } };
   const updateDispute = async (d:any, status:'RESOLVED'|'REJECTED') => { const note = window.prompt(status === 'RESOLVED' ? 'Resolution note (optional):' : 'Reject reason (optional):', d.adminNote || '') ?? ''; try { await backendApi.updateMatchDispute(d.id, status, note); await refreshDisputes(); showToast(status === 'RESOLVED' ? 'Complaint resolved হয়েছে।' : 'Complaint rejected হয়েছে।'); } catch (e:any) { showToast(e?.message || 'Complaint update করা যায়নি।', 'error'); } };
   const approveReferral = async (r:any) => { try { await backendApi.approveAdminReferral(r.id); await refreshReferrals(); showToast('Referral bonus অনুমোদন হয়েছে।'); } catch (e:any) { showToast(e?.message || 'Referral approve করা যায়নি।', 'error'); } };
   const rejectReferral = async (r:any) => { const reason = window.prompt('Reject করার কারণ (ঐচ্ছিক):', '') ?? ''; try { await backendApi.rejectAdminReferral(r.id, reason); await refreshReferrals(); showToast('Referral reject করা হয়েছে।'); } catch (e:any) { showToast(e?.message || 'Referral reject করা যায়নি।', 'error'); } };
@@ -557,6 +571,16 @@ export const AdminPanel: React.FC = () => {
           </button>
 
           <button
+            id="admin-tab-support"
+            onClick={() => setActiveAdminTab('support')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all relative ${activeAdminTab === 'support' ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20' : 'text-slate-400 hover:text-slate-200 hover:bg-indigo-950/50'}`}
+          >
+            <MessageCircle className="w-3.5 h-3.5" />
+            <span>সাপোর্ট চ্যাট</span>
+            {supportChats.filter(c => String(c.status || '').toUpperCase() === 'OPEN' && c.unreadForAdmin > 0).length > 0 && <span className="bg-red-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full">{supportChats.filter(c => String(c.status || '').toUpperCase() === 'OPEN' && c.unreadForAdmin > 0).length}</span>}
+          </button>
+
+          <button
             id="admin-tab-settings"
             onClick={() => setActiveAdminTab('settings')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
@@ -927,6 +951,24 @@ export const AdminPanel: React.FC = () => {
                 {d.status === 'OPEN' && <div className="flex gap-2"><button onClick={() => updateDispute(d,'RESOLVED')} className="flex-1 rounded-xl bg-emerald-500 py-2 text-xs font-black text-slate-950">Resolve</button><button onClick={() => updateDispute(d,'REJECTED')} className="flex-1 rounded-xl bg-red-500/15 border border-red-500/30 py-2 text-xs font-black text-red-300">Reject</button></div>}
               </div>
             ))}
+          </div>
+        )}
+
+        {activeAdminTab === 'support' && (
+          <div className="space-y-4 max-w-6xl">
+            <div className="bg-[#121935] p-4 rounded-2xl border border-cyan-500/20"><h2 className="text-base font-black text-white flex items-center gap-2"><MessageCircle className="w-5 h-5 text-cyan-300"/> Live Support Chat</h2><p className="text-xs text-slate-400 mt-1">Player-দের message এখানে real-time polling-এর মাধ্যমে আসবে। Reply দিলে player-এর chat-এ দেখা যাবে।</p></div>
+            <div className="grid lg:grid-cols-[280px_1fr] gap-3">
+              <div className="bg-[#121935] rounded-2xl border border-indigo-900/60 p-2 space-y-1 max-h-[620px] overflow-y-auto">
+                {supportChats.length===0 ? <div className="p-6 text-center text-xs text-slate-500">কোনো support chat নেই।</div> : supportChats.map((c:any)=><button key={c.id} onClick={()=>setSelectedSupportChat(c)} className={`w-full text-left p-3 rounded-xl border ${selectedSupportChat?.id===c.id?'bg-cyan-500/10 border-cyan-500/40':'bg-[#0b1022] border-indigo-900/50 hover:border-indigo-700'}`}><div className="flex items-center justify-between gap-2"><span className="font-black text-xs text-white truncate">{c.userName || 'Player'}</span>{c.unreadForAdmin>0&&<span className="bg-red-500 text-white rounded-full px-1.5 text-[9px] font-black">{c.unreadForAdmin}</span>}</div><div className="text-[10px] text-slate-500 mt-1 truncate">{c.lastMessage || 'No message'}</div><div className="text-[9px] text-slate-600 mt-1">{c.status} • {c.userPhone || ''}</div></button>)}
+              </div>
+              <div className="bg-[#121935] rounded-2xl border border-indigo-900/60 min-h-[500px] flex flex-col">
+                {!selectedSupportChat ? <div className="flex-1 flex items-center justify-center text-sm text-slate-500">একটি support chat নির্বাচন করুন।</div> : <>
+                  <div className="p-4 border-b border-indigo-900 flex items-center justify-between"><div><div className="font-black text-white">{selectedSupportChat.userName || 'Player'}</div><div className="text-[10px] text-slate-500">{selectedSupportChat.userPhone || ''} • Chat #{String(selectedSupportChat.id).slice(-8)}</div></div><button onClick={toggleSupportStatus} className={`px-3 py-1.5 rounded-lg text-[10px] font-black ${selectedSupportChat.status==='OPEN'?'bg-red-500/15 text-red-300 border border-red-500/30':'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'}`}>{selectedSupportChat.status==='OPEN'?'Close Chat':'Re-open Chat'}</button></div>
+                  <div className="flex-1 p-4 space-y-2 overflow-y-auto max-h-[470px]">{(selectedSupportChat.messages||[]).map((m:any)=><div key={m.id} className={`flex ${m.senderType==='ADMIN'?'justify-end':'justify-start'}`}><div className={`max-w-[75%] rounded-2xl px-3 py-2 ${m.senderType==='ADMIN'?'bg-cyan-600 text-white':'bg-[#0b1022] border border-indigo-800 text-slate-200'}`}><div className="text-xs whitespace-pre-wrap">{m.message}</div><div className="text-[8px] opacity-60 mt-1">{new Date(m.createdAt).toLocaleString('en-GB')}</div></div></div>)}</div>
+                  <div className="p-3 border-t border-indigo-900 flex gap-2"><textarea value={supportReply} onChange={e=>setSupportReply(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendSupportReply();}}} rows={2} maxLength={2000} placeholder="Player-কে reply লিখুন..." className="flex-1 resize-none bg-[#0b1022] border border-indigo-800 rounded-xl px-3 py-2 text-xs text-white"/><button onClick={sendSupportReply} disabled={!supportReply.trim()||supportSending} className="w-11 rounded-xl bg-cyan-500 text-slate-950 flex items-center justify-center disabled:opacity-40"><Send className="w-4 h-4"/></button></div>
+                </>}
+              </div>
+            </div>
           </div>
         )}
 

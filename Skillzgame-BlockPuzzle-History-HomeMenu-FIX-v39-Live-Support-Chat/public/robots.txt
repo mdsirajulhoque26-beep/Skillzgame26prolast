@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://skillzgame26prolast.vercel.app/sitemap.xml

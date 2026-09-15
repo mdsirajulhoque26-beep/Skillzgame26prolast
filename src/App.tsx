@@ -20,10 +20,10 @@ import { WithdrawModal } from './components/modals/WithdrawModal';
 import { TransferModal } from './components/modals/TransferModal';
 import { LeaderboardModal } from './components/modals/LeaderboardModal';
 import { ReferModal } from './components/modals/ReferModal';
-import { SupportModal } from './components/modals/SupportModal';
 import { VideoTutorialModal } from './components/modals/VideoTutorialModal';
 import { DailyLimitModal } from './components/modals/DailyLimitModal';
 import { RulesModal } from './components/modals/RulesModal';
+import { SupportChatModal } from './components/modals/SupportChatModal';
 
 const MainLayout: React.FC = () => {
   const { isLoggedIn, currentTab } = useApp();
@@ -64,7 +64,7 @@ const MainLayout: React.FC = () => {
       <TransferModal />
       <LeaderboardModal />
       <ReferModal />
-      <SupportModal />
+      <SupportChatModal />
       <VideoTutorialModal />
       <DailyLimitModal />
       <RulesModal />

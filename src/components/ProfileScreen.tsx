@@ -22,11 +22,7 @@ export const ProfileScreen: React.FC = () => {
   const androidApkUrl = (import.meta.env.VITE_ANDROID_APK_URL || '').trim();
   const { user, logout, setCurrentTab, openModal, paymentSettings } = useApp();
 
-  const handleAdminSupport = () => {
-    const num = paymentSettings.whatsappSupport || '';
-    const message = encodeURIComponent(`Hello Admin, I need support for my account: ${user.phone}`);
-    window.open(`https://wa.me/88${num.replace(/[^0-9]/g, '')}?text=${message}`, '_blank');
-  };
+  const handleAdminSupport = () => openModal('support');
 
   const handleDeveloperProfile = () => {
     alert('SKILLZGAME - Smart Block Puzzle Game.\nVersion: 2.4.0 (2026 Edition)');

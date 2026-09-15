@@ -978,6 +978,90 @@ app.patch('/api/admin/match-disputes/:id', auth, admin, async (req, res) => {
   } catch (err) { res.status(503).json({ message: err?.message || 'Complaint update করা যায়নি।' }); }
 });
 
+app.get('/api/support-chat', auth, async (req, res) => {
+  try {
+    const chats = Array.isArray(req.db.supportChats) ? req.db.supportChats : [];
+    const chat = chats.find(c => String(c.userId) === String(req.user.id)) || null;
+    if (chat) {
+      chat.unreadForUser = 0;
+      await saveDbPartial(req.db, ['supportChats']);
+    }
+    res.json({ chat });
+  } catch (err) { res.status(503).json({ message: err?.message || 'Support chat unavailable.' }); }
+});
+
+app.post('/api/support-chat/messages', auth, async (req, res) => {
+  try {
+    const message = safeText(req.body?.message, 2000);
+    if (!message) return res.status(400).json({ message: 'Message লিখুন।' });
+    const chats = Array.isArray(req.db.supportChats) ? req.db.supportChats : [];
+    let chat = chats.find(c => String(c.userId) === String(req.user.id));
+    if (!chat) {
+      chat = { id: id('support'), userId: req.user.id, userName: req.user.name, userPhone: req.user.phone, status: 'OPEN', createdAt: now(), updatedAt: now(), unreadForUser: 0, unreadForAdmin: 0, messages: [] };
+      chats.unshift(chat);
+    }
+    chat.status = 'OPEN'; chat.updatedAt = now(); chat.userName = req.user.name; chat.userPhone = req.user.phone;
+    chat.messages = Array.isArray(chat.messages) ? chat.messages : [];
+    chat.messages.push({ id: id('msg'), senderType: 'USER', senderId: req.user.id, message, createdAt: now() });
+    chat.unreadForAdmin = Number(chat.unreadForAdmin || 0) + 1; chat.unreadForUser = 0;
+    req.db.supportChats = chats;
+    await saveDbPartial(req.db, ['supportChats']);
+    res.status(201).json({ chat });
+  } catch (err) { res.status(503).json({ message: err?.message || 'Message পাঠানো যায়নি।' }); }
+});
+
+app.post('/api/support-chat/close', auth, async (req, res) => {
+  try {
+    const chats = Array.isArray(req.db.supportChats) ? req.db.supportChats : [];
+    const chat = chats.find(c => String(c.userId) === String(req.user.id));
+    if (!chat) return res.status(404).json({ message: 'Support chat পাওয়া যায়নি।' });
+    chat.status = 'CLOSED'; chat.updatedAt = now();
+    req.db.supportChats = chats;
+    await saveDbPartial(req.db, ['supportChats']);
+    res.json({ chat });
+  } catch (err) { res.status(503).json({ message: err?.message || 'Chat বন্ধ করা যায়নি।' }); }
+});
+
+app.get('/api/admin/support-chats', auth, admin, async (req, res) => {
+  try {
+    const db = await loadDb();
+    const chats = Array.isArray(db.supportChats) ? db.supportChats : [];
+    const changed = chats.some(c => Number(c.unreadForAdmin || 0) > 0);
+    if (changed) { chats.forEach(c => { c.unreadForAdmin = 0; }); await saveDbPartial(db, ['supportChats']); }
+    res.json({ chats: chats.map(c => ({ ...c, messages: Array.isArray(c.messages) ? c.messages : [], unreadForAdmin: Number(c.unreadForAdmin || 0), unreadForUser: Number(c.unreadForUser || 0) })).sort((a,b) => Date.parse(b.updatedAt || b.createdAt || 0) - Date.parse(a.updatedAt || a.createdAt || 0)) });
+  } catch (err) { res.status(503).json({ message: err?.message || 'Support chats unavailable.' }); }
+});
+
+app.post('/api/admin/support-chats/:id/messages', auth, admin, async (req, res) => {
+  try {
+    const message = safeText(req.body?.message, 2000);
+    if (!message) return res.status(400).json({ message: 'Reply লিখুন।' });
+    const chats = Array.isArray(req.db.supportChats) ? req.db.supportChats : [];
+    const chat = chats.find(c => String(c.id) === String(req.params.id));
+    if (!chat) return res.status(404).json({ message: 'Support chat পাওয়া যায়নি।' });
+    chat.status = 'OPEN'; chat.updatedAt = now(); chat.messages = Array.isArray(chat.messages) ? chat.messages : [];
+    chat.messages.push({ id: id('msg'), senderType: 'ADMIN', senderId: req.user.id, senderName: req.user.name, message, createdAt: now() });
+    chat.unreadForUser = Number(chat.unreadForUser || 0) + 1; chat.unreadForAdmin = 0;
+    req.db.supportChats = chats;
+    await saveDbPartial(req.db, ['supportChats']);
+    res.status(201).json({ chat });
+  } catch (err) { res.status(503).json({ message: err?.message || 'Reply পাঠানো যায়নি।' }); }
+});
+
+app.patch('/api/admin/support-chats/:id', auth, admin, async (req, res) => {
+  try {
+    const status = safeText(req.body?.status, 20).toUpperCase();
+    if (!['OPEN','CLOSED'].includes(status)) return res.status(400).json({ message: 'Invalid chat status.' });
+    const chats = Array.isArray(req.db.supportChats) ? req.db.supportChats : [];
+    const chat = chats.find(c => String(c.id) === String(req.params.id));
+    if (!chat) return res.status(404).json({ message: 'Support chat পাওয়া যায়নি।' });
+    chat.status = status; chat.updatedAt = now();
+    req.db.supportChats = chats;
+    await saveDbPartial(req.db, ['supportChats']);
+    res.json({ chat });
+  } catch (err) { res.status(503).json({ message: err?.message || 'Chat status update করা যায়নি।' }); }
+});
+
 app.get('/api/history', async (req, res) => {
   try {
     const authHeader = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
