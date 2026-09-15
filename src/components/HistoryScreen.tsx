@@ -81,7 +81,9 @@ export const HistoryScreen: React.FC = () => {
     return items
       .filter((m) => {
         const status = String(m?.status || '').toUpperCase();
-        return ['COMPLETED', 'FINISHED', 'REFUNDED', 'SUBMITTED'].includes(status) || Boolean(getOutcome(m));
+        // SUBMITTED is still waiting for the opponent and belongs in Pending & Match History.
+        // Only terminal/settled records belong in the completed History screen.
+        return ['COMPLETED', 'FINISHED', 'REFUNDED'].includes(status) || Boolean(getOutcome(m));
       })
       .sort((a, b) => {
         const da = Date.parse(a?.completedAt || a?.updatedAt || a?.createdAt || '') || 0;

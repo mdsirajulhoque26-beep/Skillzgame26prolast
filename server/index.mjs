@@ -310,10 +310,23 @@ function multiplayerPrizes(config) {
   return raw.map(Number).filter(n => Number.isFinite(n) && n > 0).map(money);
 }
 
+function isBlockPuzzleMatchmakingEligibleUser(db, userId) {
+  const user = (db.users || []).find(u => String(u.id) === String(userId));
+  if (!user) return false;
+  if (user.isBanned) return false;
+  if (user.deleted === true || user.accountDeleted === true) return false;
+  const status = String(user.status || '').toUpperCase();
+  if (status === 'DELETED' || status === 'BANNED') return false;
+  return true;
+}
+
 function blockPuzzlePublicMatch(session, db) {
   if (!session) return null;
-  const opponent = session.opponentUserId ? (db.users || []).find(u => u.id === session.opponentUserId) : null;
   const group = session.duelId ? (db.blockPuzzleMatches || []).filter(m => m.duelId === session.duelId && !m.tournamentId) : [session];
+  const opponentSession = session.opponentUserId
+    ? group.find(m => String(m.userId) === String(session.opponentUserId))
+    : group.find(m => String(m.userId) !== String(session.userId));
+  const opponent = opponentSession ? (db.users || []).find(u => String(u.id) === String(opponentSession.userId)) : null;
   const participants = group.map(m => ({ userId:m.userId, name:m.userName, score:m.score ?? null, status:m.status, submitted: Boolean(m.submittedAt) }));
   return {
     id: session.id, gameType: session.gameType || 'block_puzzle', duelId: session.duelId || null, tournamentId: session.tournamentId || null, userId: session.userId, userName: session.userName, playerCount: Number(session.playerCount || 2), playersJoined: participants.length, participants,
@@ -324,7 +337,7 @@ function blockPuzzlePublicMatch(session, db) {
     gameStartedAt: session.gameStartedAt || null, submittedAt: session.submittedAt || null,
     paused: Boolean(session.pauseStartedAt || session.paused), pauseStartedAt: session.pauseStartedAt || null,
     score: session.score ?? null, linesCleared: session.linesCleared ?? 0, bestCombo: session.bestCombo ?? 0,
-    opponent: opponent ? { userId: opponent.id, name: opponent.name, score: session.opponentScore ?? opponent.score ?? null, linesCleared: session.opponentLinesCleared ?? opponent.linesCleared ?? 0 } : null,
+    opponent: opponentSession ? { userId: opponentSession.userId, name: opponentSession.userName || opponent?.name || 'Opponent', score: opponentSession.score == null ? null : Number(opponentSession.score), linesCleared: Number(opponentSession.linesCleared || 0), bestCombo: Number(opponentSession.bestCombo || 0), status: opponentSession.status } : null,
     outcome: session.outcome || null, winnerId: session.winnerId || null, settledAt: session.settledAt || null,
     refunded: Boolean(session.refunded)
   };
@@ -449,12 +462,24 @@ function findJoinableBlockPuzzleMatch(db, session, entryFee, prizeAmount, player
   const candidates = (db.blockPuzzleMatches || []).filter(m =>
     m.id !== session.id && !m.tournamentId && !m.refunded &&
     String(m.gameType || 'block_puzzle') === gameType && Number(m.entryFee) === entryFee && Number(m.prizeAmount) === prizeAmount &&
-    Math.max(2, Number(m.playerCount || 2)) === required && m.userId !== session.userId
+    Math.max(2, Number(m.playerCount || 2)) === required && m.userId !== session.userId &&
+    isBlockPuzzleMatchmakingEligibleUser(db, m.userId)
   );
-  // Prefer an existing group that is not full, then a fresh solo player.
-  const grouped = candidates.filter(m => m.duelId).sort((a,b)=>(Date.parse(a.createdAt||0)||0)-(Date.parse(b.createdAt||0)||0));
+  // Prefer an existing OPEN group that is not full. Never use a COMPLETED
+  // or refunded member as a matchmaking target: a finished duelId must stay
+  // isolated from every new Pro Match.
+  const openStatuses = new Set(['PENDING', 'PLAYING', 'SUBMITTED']);
+  const grouped = candidates.filter(m =>
+    m.duelId && !m.refunded && openStatuses.has(String(m.status || '').toUpperCase())
+  ).sort((a,b)=>(Date.parse(a.createdAt||0)||0)-(Date.parse(b.createdAt||0)||0));
   for (const candidate of grouped) {
-    const count = db.blockPuzzleMatches.filter(x => x.duelId === candidate.duelId && !x.refunded && x.status !== 'COMPLETED').length;
+    const activeMembers = db.blockPuzzleMatches.filter(x =>
+      x.duelId === candidate.duelId && !x.refunded && openStatuses.has(String(x.status || '').toUpperCase())
+    );
+    // Never attach a new player to a group containing a banned/deleted/missing
+    // account. Completed historical records are intentionally ignored here.
+    if (activeMembers.some(x => !isBlockPuzzleMatchmakingEligibleUser(db, x.userId))) continue;
+    const count = activeMembers.length;
     if (count < required) return { target: candidate, kind: 'GROUP', groupCount: count };
   }
   const live = candidates.find(m => !m.duelId && m.status === 'PLAYING' && m.gameStartedAt && Date.parse(m.gameStartedAt) + BP_GAME_MS > Date.now());
@@ -462,13 +487,12 @@ function findJoinableBlockPuzzleMatch(db, session, entryFee, prizeAmount, player
   // A solo player who already submitted is still an open asynchronous
   // matchmaking target until the pending window expires. Do not require a
   // duelId here: the first submitted player may not have been grouped yet.
-  const openStatuses = new Set(['PENDING', 'PLAYING', 'SUBMITTED']);
-  const open = candidates.find(m =>
+  const openSolo = candidates.find(m =>
     !m.duelId && openStatuses.has(String(m.status || '').toUpperCase()) &&
     (!m.pendingUntil || Date.parse(m.pendingUntil) > Date.now())
   );
-  if (open) {
-    return { target: open, kind: String(open.status || '').toUpperCase(), groupCount: 1 };
+  if (openSolo && isBlockPuzzleMatchmakingEligibleUser(db, openSolo.userId)) {
+    return { target: openSolo, kind: String(openSolo.status || '').toUpperCase(), groupCount: 1 };
   }
   return null;
 }
@@ -916,7 +940,13 @@ app.get('/api/history', async (req, res) => {
       if (String(m.userId) !== uid) continue;
       if (m.refunded && String(m.status).toUpperCase() !== 'REFUNDED') continue;
       const tournament = m.tournamentId ? tournaments.find(t => String(t.id) === String(m.tournamentId)) : null;
-      const opponent = m.opponentUserId ? users.find(u => String(u.id) === String(m.opponentUserId)) : null;
+      let opponentMatch = m.opponentUserId
+        ? matches.find(x => String(x.userId) === String(m.opponentUserId) && (!m.duelId || String(x.duelId) === String(m.duelId)) && !x.refunded)
+        : null;
+      if (!opponentMatch && m.duelId) {
+        opponentMatch = matches.find(x => String(x.duelId) === String(m.duelId) && String(x.userId) !== uid && !x.refunded);
+      }
+      const opponent = opponentMatch ? users.find(u => String(u.id) === String(opponentMatch.userId)) : null;
       items.push({
         id: String(m.id), matchId: String(m.id),
         type: tournament ? 'TOURNAMENT_MATCH' : 'PRO_MATCH',
@@ -927,7 +957,13 @@ app.get('/api/history', async (req, res) => {
         score: m.score == null ? null : Number(m.score),
         linesCleared: Number(m.linesCleared || 0), bestCombo: Number(m.bestCombo || 0),
         playerCount: Number(m.playerCount || 2),
-        opponent: opponent ? { userId: opponent.id, name: opponent.name || 'Opponent' } : null,
+        opponent: opponentMatch ? {
+          userId: opponentMatch.userId,
+          name: opponentMatch.userName || opponent?.name || 'Opponent',
+          score: opponentMatch.score == null ? null : Number(opponentMatch.score),
+          linesCleared: Number(opponentMatch.linesCleared || 0),
+          bestCombo: Number(opponentMatch.bestCombo || 0),
+        } : null,
         createdAt: m.createdAt || null, submittedAt: m.submittedAt || null, settledAt: m.settledAt || null,
         tournamentId: m.tournamentId || null, refunded: Boolean(m.refunded),
       });
