@@ -86,6 +86,13 @@ export const BlockPuzzleDuel: React.FC = () => {
   const [tournamentLoading, setTournamentLoading] = useState(false);
   const [multiplayerProConfig, setMultiplayerProConfig] = useState<any | null>(null);
 
+  // Prevent the initial active-match restore from racing with a brand-new Pro Match.
+  // Without this guard, a slow boot request can finish after the user clicks Pro Match
+  // and re-run initMatch(), which looks like the game randomly restarted.
+  const freshProMatchRef = useRef<string>('');
+  const initializedMatchRef = useRef<string>('');
+  const countdownMatchRef = useRef<string>('');
+
 
   // Modals
   const [showPendingModal, setShowPendingModal] = useState<boolean>(false);
@@ -226,6 +233,10 @@ export const BlockPuzzleDuel: React.FC = () => {
       }
       const match = await getActiveBlockPuzzleMatch();
       if (!alive || !match) return;
+      // If the user has already started a fresh Pro Match while boot was waiting,
+      // never restore the older active-match response over the new game.
+      if (freshProMatchRef.current && String(match.id) !== freshProMatchRef.current) return;
+      if (freshProMatchRef.current && String(match.id) === freshProMatchRef.current) return;
       setActiveMatchId(String(match.id));
       setGameMode(match.tournamentId ? 'tournament' : 'duel');
       setEntryFee(Number(match.entryFee || 0));
@@ -287,7 +298,11 @@ export const BlockPuzzleDuel: React.FC = () => {
       if (match.gameStartedAt || match.startsAt) setServerGameStartedAt(match.gameStartedAt || match.startsAt || null);
       if (Number.isFinite(Number(match.gameSeed))) setMatchSeed(Number(match.gameSeed));
       if ((match.status === 'PLAYING' || match.status === 'MATCHED') && (screenState === 'matchmaking' || screenState === 'countdown')) {
-        startCountdown('duel', match.gameStartedAt || match.startsAt || undefined, Number(match.gameSeed) || null);
+        const isFreshLocalMatch = freshProMatchRef.current === String(match.id) && initializedMatchRef.current === String(match.id);
+        if (!isFreshLocalMatch && countdownMatchRef.current !== String(match.id)) {
+          countdownMatchRef.current = String(match.id);
+          startCountdown('duel', match.gameStartedAt || match.startsAt || undefined, Number(match.gameSeed) || null);
+        }
       } else if (match.status === 'COMPLETED' && match.outcome) {
         setMatchOutcome(match.outcome);
         setIsSubmittingScore(false);
@@ -516,10 +531,13 @@ export const BlockPuzzleDuel: React.FC = () => {
     setServerGameStartedAt(createdStart);
     if (createdMatch?.opponent) setMatchedOpponent({ name: createdMatch.opponent.name, score: Number(createdMatch.opponent.score || 0), linesCleared: Number(createdMatch.opponent.linesCleared || 0) });
     if (Number.isFinite(Number(createdMatch?.gameSeed ?? (res as any).gameSeed))) setMatchSeed(Number(createdMatch?.gameSeed ?? (res as any).gameSeed));
-    // Every new paid Pro Match starts immediately. Do not show a matchmaking
-    // holding screen and do not use an old server timestamp for the first clock.
-    // The opponent can join later; this player's 180-second attempt starts now.
-    initMatch('duel', difficulty, undefined, Number(createdMatch?.gameSeed ?? (res as any).gameSeed) || null);
+    // Match start is local and immediate. Use the same 3-second countdown as
+    // Practice Match; never wait for an opponent before starting the player's run.
+    const seed = Number(createdMatch?.gameSeed ?? (res as any).gameSeed) || null;
+    freshProMatchRef.current = createdMatchId;
+    initializedMatchRef.current = createdMatchId;
+    countdownMatchRef.current = createdMatchId;
+    startCountdown('duel', undefined, seed);
   };
 
   // Start Practice Mode (Free)
@@ -559,6 +577,9 @@ export const BlockPuzzleDuel: React.FC = () => {
   // Initialize 10x10 Match
   const initMatch = (mode: BlockGameMode, diff: PracticeDifficulty = 'normal', serverStartAt?: string, serverSeed?: number | null) => {
     // Paid duels use the server's shared seed; practice remains locally random.
+    if ((mode === 'duel' || mode === 'tournament') && activeMatchId) {
+      initializedMatchRef.current = String(activeMatchId);
+    }
     const seed = (mode === 'duel' || mode === 'tournament') && Number.isFinite(Number(serverSeed)) ? Number(serverSeed) : Date.now();
     setMatchSeed(seed);
     setTrioIndex(0);

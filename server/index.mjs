@@ -281,7 +281,7 @@ app.get('/api/admin/transactions', auth, admin, (req, res) => res.json({ transac
 
 // Server-authoritative Block Puzzle matchmaking. Each paid session is paired only with
 // another waiting player at the same entry/prize tier. The server owns settlement/refunds.
-const BP_PENDING_MS = 3 * 60 * 60 * 1000;
+const BP_PENDING_MS = 24 * 60 * 60 * 1000;
 const BP_GAME_MS = 3 * 60 * 1000;
 
 // Live game protocol: the HTTP API remains responsible for matchmaking/settlement;
@@ -402,7 +402,7 @@ function publicLeaderboard(db, board) {
 }
 
 // A player gets 3 minutes to play. If nobody joins during that game, the
-// finished score remains PENDING for another 3 hours. A later player can then
+// finished score remains available for another 24 hours. A later player can then
 // join and play their own 3-minute game against that stored score.
 async function expireBlockPuzzleMatches(db) {
   let changed = false;
@@ -435,10 +435,16 @@ async function expireBlockPuzzleMatches(db) {
     }
   }
 
-  // Pending sessions older than 3 hours are automatically refunded.
+  // Solo attempts remain open for 24 hours after their 3-minute game ends.
+  // A solo finished attempt is SUBMITTED (not PENDING), so the cleanup must
+  // explicitly include SUBMITTED sessions that have no duelId. Never refund a
+  // real grouped duel here; those are settled by settleBlockPuzzleDuel().
   const pendingCutoff = nowMs - BP_PENDING_MS;
   for (const session of (db.blockPuzzleMatches || [])) {
-    if (session.tournamentId || session.status !== 'PENDING' || session.refunded) continue;
+    if (session.tournamentId || session.refunded || session.status === 'COMPLETED') continue;
+    const isSoloOpen = session.status === 'SUBMITTED' && !session.duelId;
+    const isLegacyPending = session.status === 'PENDING';
+    if (!isSoloOpen && !isLegacyPending) continue;
     const until = Date.parse(session.pendingUntil || '');
     if (Number.isFinite(until) && until > nowMs) continue;
     const reference = Date.parse(session.pendingUntil || session.gameEndedAt || session.createdAt || '');
@@ -446,11 +452,11 @@ async function expireBlockPuzzleMatches(db) {
     const u = db.users.find(x => x.id === session.userId);
     if (u) {
       u.gamingBalance = money(Number(u.gamingBalance || 0) + Number(session.entryFee || 0));
-      db.transactions.unshift(makeTransaction(u.id, 'refund', Number(session.entryFee || 0), `${session.gameType === 'nut_sort' ? 'Nut Sort' : 'Block Puzzle'} Entry Refund`, `No opponent within 3 hours • Match #${session.id.slice(-6)}`, 'match', { matchId: session.id, gameType: session.gameType || 'block_puzzle' }));
+      db.transactions.unshift(makeTransaction(u.id, 'refund', Number(session.entryFee || 0), `${session.gameType === 'nut_sort' ? 'Nut Sort' : 'Block Puzzle'} Entry Refund`, `No opponent within 24 hours • Match #${session.id.slice(-6)}`, 'match', { matchId: session.id, gameType: session.gameType || 'block_puzzle' }));
     }
     session.status = 'REFUNDED';
     session.refunded = true;
-    session.refundReason = 'No opponent within 3 hours';
+    session.refundReason = 'No opponent within 24 hours';
     session.refundedAt = now();
     changed = true;
   }
@@ -806,9 +812,9 @@ app.post('/api/block-puzzle/matches/start', auth, async (req, res) => {
       }
       if (Number(req.user.gamingBalance) < entryFee) throw Object.assign(new Error('অপর্যাপ্ত গেমিং ব্যালেন্স! দয়া করে ডিপোজিট করুন।'), { statusCode: 400 });
 
-      // Pro Match is asynchronous: the player may play immediately after paying.
-      // The opponent can join later (up to 3 hours from entry) and play the same
-      // deterministic game seed against the stored score.
+      // Pro Match starts immediately after the entry fee is accepted. The opponent
+      // can join later (up to 24 hours) and play the same deterministic game seed
+      // against the stored score.
       const createdAt = now();
       const gameStartedAt = createdAt;
       const pendingUntil = new Date(Date.parse(createdAt) + BP_PENDING_MS).toISOString();
@@ -982,11 +988,12 @@ app.get('/api/support-chat', auth, async (req, res) => {
   try {
     const chats = Array.isArray(req.db.supportChats) ? req.db.supportChats : [];
     const chat = chats.find(c => String(c.userId) === String(req.user.id)) || null;
-    if (chat) {
-      chat.unreadForUser = 0;
-      await saveDbPartial(req.db, ['supportChats']);
-    }
-    res.json({ chat });
+    // IMPORTANT: this is a read/poll endpoint. Never persist an unread-counter
+    // change here because req.db may be an older snapshot than a concurrent
+    // admin reply/user message. Saving that stale snapshot can overwrite newer
+    // support messages. Return a copy with the user's unread badge cleared.
+    const responseChat = chat ? { ...chat, unreadForUser: 0 } : null;
+    res.json({ chat: responseChat });
   } catch (err) { res.status(503).json({ message: err?.message || 'Support chat unavailable.' }); }
 });
 
@@ -1026,9 +1033,17 @@ app.get('/api/admin/support-chats', auth, admin, async (req, res) => {
   try {
     const db = await loadDb();
     const chats = Array.isArray(db.supportChats) ? db.supportChats : [];
-    const changed = chats.some(c => Number(c.unreadForAdmin || 0) > 0);
-    if (changed) { chats.forEach(c => { c.unreadForAdmin = 0; }); await saveDbPartial(db, ['supportChats']); }
-    res.json({ chats: chats.map(c => ({ ...c, messages: Array.isArray(c.messages) ? c.messages : [], unreadForAdmin: Number(c.unreadForAdmin || 0), unreadForUser: Number(c.unreadForUser || 0) })).sort((a,b) => Date.parse(b.updatedAt || b.createdAt || 0) - Date.parse(a.updatedAt || a.createdAt || 0)) });
+    // IMPORTANT: this is a read/poll endpoint. Do not save unread-counter
+    // changes from this GET. A concurrent player/admin message could be written
+    // after this snapshot was loaded; persisting the stale snapshot here can
+    // make newer messages appear to be deleted.
+    const responseChats = chats.map(c => ({
+      ...c,
+      messages: Array.isArray(c.messages) ? c.messages : [],
+      unreadForAdmin: 0,
+      unreadForUser: Number(c.unreadForUser || 0)
+    })).sort((a,b) => Date.parse(b.updatedAt || b.createdAt || 0) - Date.parse(a.updatedAt || a.createdAt || 0));
+    res.json({ chats: responseChats });
   } catch (err) { res.status(503).json({ message: err?.message || 'Support chats unavailable.' }); }
 });
 
