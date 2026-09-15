@@ -13,7 +13,7 @@ export const SupportChatModal: React.FC = () => {
 
   const loadChat = async (silent = false) => {
     if (!silent) setLoading(true);
-    try { const data = await backendApi.supportChat(); setChat(data.chat || null); }
+    try { const data = await backendApi.supportChat(); const incoming = data.chat || null; setChat(prev => { if (!incoming) return prev; if (!prev) return incoming; const prevTime = Date.parse(prev.updatedAt || prev.createdAt || 0); const incomingTime = Date.parse(incoming.updatedAt || incoming.createdAt || 0); return incomingTime >= prevTime ? incoming : prev; }); }
     catch (e) { console.error('Support chat load failed:', e); }
     finally { if (!silent) setLoading(false); }
   };

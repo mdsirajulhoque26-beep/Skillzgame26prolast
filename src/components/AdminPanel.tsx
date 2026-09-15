@@ -132,7 +132,30 @@ export const AdminPanel: React.FC = () => {
   const refreshTournaments = async () => { try { const data=await backendApi.adminTournaments(); setTournaments(data.tournaments||[]); } catch(e){ console.error('Failed to load tournaments:',e); } };
   const refreshReferrals = async () => { try { const data = await backendApi.adminReferrals(); setReferrals(data.referrals || []); } catch (e) { console.error('Failed to load referrals:', e); } };
   const refreshDisputes = async () => { try { const data = await backendApi.adminMatchDisputes(); setDisputes(data.disputes || []); } catch (e) { console.error('Failed to load match disputes:', e); } };
-  const refreshSupportChats = async () => { try { const data = await backendApi.adminSupportChats(); setSupportChats(data.chats || []); setSelectedSupportChat(prev => prev ? (data.chats || []).find((c:any)=>c.id===prev.id) || prev : (data.chats || [])[0] || null); } catch (e) { console.error('Failed to load support chats:', e); } };
+  const refreshSupportChats = async () => {
+    try {
+      const data = await backendApi.adminSupportChats();
+      const incoming = Array.isArray(data.chats) ? data.chats : [];
+      setSupportChats(prev => {
+        const byId = new Map(prev.map((c:any) => [String(c.id), c]));
+        incoming.forEach((c:any) => {
+          const old = byId.get(String(c.id));
+          const oldTime = Date.parse(old?.updatedAt || old?.createdAt || 0);
+          const newTime = Date.parse(c?.updatedAt || c?.createdAt || 0);
+          if (!old || newTime >= oldTime) byId.set(String(c.id), c);
+        });
+        return Array.from(byId.values()).sort((a:any,b:any) => Date.parse(b.updatedAt || b.createdAt || 0) - Date.parse(a.updatedAt || a.createdAt || 0));
+      });
+      setSelectedSupportChat(prev => {
+        if (!prev) return incoming[0] || null;
+        const fresh = incoming.find((c:any)=>String(c.id)===String(prev.id));
+        if (!fresh) return prev;
+        const prevTime = Date.parse(prev.updatedAt || prev.createdAt || 0);
+        const freshTime = Date.parse(fresh.updatedAt || fresh.createdAt || 0);
+        return freshTime >= prevTime ? fresh : prev;
+      });
+    } catch (e) { console.error('Failed to load support chats:', e); }
+  };
   const sendSupportReply = async () => { const text=supportReply.trim(); if(!text || !selectedSupportChat || supportSending) return; setSupportSending(true); try { const data=await backendApi.adminSendSupportMessage(selectedSupportChat.id,text); setSelectedSupportChat(data.chat); setSupportChats(prev=>prev.map(c=>c.id===data.chat.id?data.chat:c)); setSupportReply(''); } catch(e:any){ showToast(e?.message||'Reply পাঠানো যায়নি।','error'); } finally { setSupportSending(false); } };
   const toggleSupportStatus = async () => { if(!selectedSupportChat) return; try { const next=selectedSupportChat.status==='CLOSED'?'OPEN':'CLOSED'; const data=await backendApi.adminUpdateSupportChat(selectedSupportChat.id,next); setSelectedSupportChat(data.chat); setSupportChats(prev=>prev.map(c=>c.id===data.chat.id?data.chat:c)); } catch(e:any){ showToast(e?.message||'Chat status update করা যায়নি।','error'); } };
   const updateDispute = async (d:any, status:'RESOLVED'|'REJECTED') => { const note = window.prompt(status === 'RESOLVED' ? 'Resolution note (optional):' : 'Reject reason (optional):', d.adminNote || '') ?? ''; try { await backendApi.updateMatchDispute(d.id, status, note); await refreshDisputes(); showToast(status === 'RESOLVED' ? 'Complaint resolved হয়েছে।' : 'Complaint rejected হয়েছে।'); } catch (e:any) { showToast(e?.message || 'Complaint update করা যায়নি।', 'error'); } };
