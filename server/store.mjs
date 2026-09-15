@@ -159,6 +159,58 @@ export async function saveDbPartial(db, keys = []) {
 }
 
 
+// Fast score write for a player's own Block Puzzle attempt. This updates only
+// the matching array element instead of loading/saving the entire application
+// state document. Settlement for multiplayer/tournament matches still uses the
+// existing locked flow for correctness.
+export async function submitBlockPuzzleScoreFast(matchId, userId, score, linesCleared = 0, bestCombo = 0) {
+  const collection = await getCollection();
+  const projection = {
+    'data.blockPuzzleMatches': { $elemMatch: { id: String(matchId), userId: String(userId) } },
+    'data.users': { $elemMatch: { id: String(userId) } }
+  };
+  const before = await collection.findOne({ _id: STATE_ID }, { projection });
+  const session = before?.data?.blockPuzzleMatches?.[0] || null;
+  const user = before?.data?.users?.[0] || null;
+  if (!session) return { ok: false, statusCode: 404, message: 'Block Puzzle match not found.' };
+  if (!['PLAYING', 'SUBMITTED'].includes(String(session.status))) {
+    return { ok: false, statusCode: 409, message: 'এই ম্যাচটি আর সাবমিট করা যাবে না।' };
+  }
+  if (!user || user.isBanned) return { ok: false, statusCode: 403, message: 'Account unavailable' };
+  const nScore = Math.max(0, Math.floor(Number(score || 0)));
+  const nLines = Math.max(0, Math.floor(Number(linesCleared || 0)));
+  const nCombo = Math.max(0, Math.floor(Number(bestCombo || 0)));
+  if (!Number.isFinite(nScore)) return { ok: false, statusCode: 400, message: 'Invalid Block Puzzle score.' };
+
+  const submittedAt = new Date().toISOString();
+  const filter = {
+    _id: STATE_ID,
+    data: { $exists: true },
+    'data.blockPuzzleMatches': { $elemMatch: { id: String(matchId), userId: String(userId), status: { $in: ['PLAYING', 'SUBMITTED'] } } }
+  };
+  const result = await collection.updateOne(filter, {
+    $set: {
+      'data.blockPuzzleMatches.$[m].status': session.status === 'PLAYING' ? 'SUBMITTED' : session.status,
+      'data.blockPuzzleMatches.$[m].submittedAt': session.status === 'PLAYING' ? submittedAt : (session.submittedAt || submittedAt),
+      'data.blockPuzzleMatches.$[m].gameEndedAt': session.status === 'PLAYING' ? submittedAt : (session.gameEndedAt || submittedAt),
+      'data.blockPuzzleMatches.$[m].score': nScore,
+      'data.blockPuzzleMatches.$[m].linesCleared': nLines,
+      'data.blockPuzzleMatches.$[m].bestCombo': nCombo,
+      updatedAt: new Date()
+    }
+  }, { arrayFilters: [{ 'm.id': String(matchId), 'm.userId': String(userId), 'm.status': { $in: ['PLAYING', 'SUBMITTED'] } }] });
+  if (result.matchedCount !== 1) return { ok: false, statusCode: 409, message: 'এই ম্যাচটি ইতিমধ্যে পরিবর্তিত হয়েছে। আবার চেষ্টা করুন।' };
+  return {
+    ok: true,
+    needsSettlement: Boolean(session.duelId || session.tournamentId),
+    duelId: session.duelId || null,
+    tournamentId: session.tournamentId || null,
+    userId: String(userId),
+    matchId: String(matchId)
+  };
+}
+
+
 // A short, robust distributed lock for the legacy single-document store.
 // This keeps existing routes/behaviour intact while avoiding false "busy" errors
 // caused by MongoDB upsert races between Vercel instances.
@@ -167,7 +219,7 @@ export async function withDbLock(fn, timeoutMs = 20000) {
   const locks = collection.db.collection(LOCK_COLLECTION_NAME);
   const owner = crypto.randomUUID();
   const deadline = Date.now() + timeoutMs;
-  const leaseMs = 15000;
+  const leaseMs = 60000;
   let acquired = false;
 
   while (Date.now() < deadline) {

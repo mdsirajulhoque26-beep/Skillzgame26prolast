@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import crypto from 'node:crypto';
-import { loadDb, loadHistoryDb, saveDb, saveDbPartial, pingDb, id, now, hashPassword, verifyPassword, publicUser, withDbLock } from './store.mjs';
+import { loadDb, loadHistoryDb, saveDb, saveDbPartial, submitBlockPuzzleScoreFast, pingDb, id, now, hashPassword, verifyPassword, publicUser, withDbLock } from './store.mjs';
 
 const app = express();
 app.disable('x-powered-by');
@@ -78,17 +78,6 @@ async function auth(req, res, next) {
   } catch (err) { next(err); }
 }
 
-// Submit-only auth validates the signed token without doing an extra full DB read.
-// The submit handler reads the fresh DB exactly once while holding the existing lock.
-async function authTokenOnly(req, res, next) {
-  try {
-    const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-    const payload = readToken(token);
-    if (!payload?.userId) return res.status(401).json({ message: 'Unauthorized' });
-    req.authUserId = payload.userId;
-    next();
-  } catch (err) { next(err); }
-}
 function admin(req, res, next) {
   if (!req.user?.isAdmin) return res.status(403).json({ message: 'Admin access required' });
   next();
@@ -1135,33 +1124,33 @@ app.post('/api/block-puzzle/matches/:id/resume', auth, async (req, res) => {
   } catch (err) { res.status(err.statusCode || 503).json({ message: err?.message || 'ম্যাচ Resume করা যায়নি।' }); }
 });
 
-app.post('/api/block-puzzle/matches/:id/submit', authTokenOnly, async (req, res) => {
+app.post('/api/block-puzzle/matches/:id/submit', async (req, res) => {
   try {
-    const result = await withDbLock(async () => {
-      const db = await loadDb();
-      const session = (db.blockPuzzleMatches || []).find(m => m.id === req.params.id && m.userId === req.user.id);
-      const score = Math.max(0, Math.floor(Number(req.body?.score || 0)));
-      const linesCleared = Math.max(0, Math.floor(Number(req.body?.linesCleared || 0)));
-      const bestCombo = Math.max(0, Math.floor(Number(req.body?.bestCombo || 0)));
-      if (!session) throw Object.assign(new Error('Block Puzzle match not found.'), { statusCode: 404 });
-      if (!['PLAYING','SUBMITTED'].includes(session.status)) throw Object.assign(new Error('এই ম্যাচটি আর সাবমিট করা যাবে না।'), { statusCode: 409 });
-      if (!Number.isFinite(score) || score < 0) throw Object.assign(new Error('Invalid Block Puzzle score.'), { statusCode: 400 });
-      if (session.status === 'PLAYING') {
-        session.status = 'SUBMITTED';
-        session.submittedAt = now();
-        session.gameEndedAt = now();
-        // Pro Match is asynchronous: each player can complete their own
-        // 3-minute attempt before or after the opponent joins. Therefore the
-        // submitted score must come from that player's completed attempt; a
-        // live WebSocket state must never replace or reset an already-played
-        // score when the opponent joins later.
-        session.score = score;
-        session.linesCleared = linesCleared;
-        session.bestCombo = bestCombo;
+    // Validate the signed token without doing the old full-database auth read.
+    // The score write itself verifies the user atomically against MongoDB.
+    const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    const payload = readToken(token);
+    if (!payload?.userId) return res.status(401).json({ message: 'Unauthorized' });
+
+    const score = Number(req.body?.score || 0);
+    const linesCleared = Number(req.body?.linesCleared || 0);
+    const bestCombo = Number(req.body?.bestCombo || 0);
+    const fast = await submitBlockPuzzleScoreFast(req.params.id, payload.userId, score, linesCleared, bestCombo);
+    if (!fast.ok) return res.status(fast.statusCode || 503).json({ message: fast.message });
+
+    // A normal solo/matchmaking submission is now complete after the atomic
+    // score write. Multiplayer/tournament settlement keeps the existing lock
+    // and payout logic, but only runs when it is actually required.
+    let result;
+    if (fast.needsSettlement) {
+      result = await withDbLock(async () => {
+        const db = await loadDb();
+        const session = (db.blockPuzzleMatches || []).find(m => m.id === req.params.id && m.userId === payload.userId);
+        if (!session) throw Object.assign(new Error('Block Puzzle match not found.'), { statusCode: 404 });
         if (session.tournamentId) {
           session.status = 'COMPLETED';
           session.outcome = 'TOURNAMENT';
-          session.settledAt = now();
+          session.settledAt = session.settledAt || now();
           const t = (db.tournaments || []).find(x => x.id === session.tournamentId);
           if (t && t.status === 'ACTIVE') {
             const entries = ensureTournamentEntries(db, t);
@@ -1171,24 +1160,24 @@ app.post('/api/block-puzzle/matches/:id/submit', authTokenOnly, async (req, res)
               if (Number(session.score || 0) >= Number(entry.bestScore || 0)) { entry.bestScore = Number(session.score || 0); entry.bestScoreAt = session.submittedAt || now(); entry.lastMatchId = session.id; }
             }
             const lastPlayer = entries.find(e => Number(e.entryNumber) === Number(t.maxPlayers));
-            if (entries.length >= Number(t.maxPlayers) && lastPlayer && lastPlayer.userId === session.userId) {
-              await finalizeTournamentInternal(db, t);
-            }
+            if (entries.length >= Number(t.maxPlayers) && lastPlayer && lastPlayer.userId === session.userId) await finalizeTournamentInternal(db, t);
           }
-        } else if (!session.duelId) {
-          session.status = 'PENDING';
-          session.pendingUntil = new Date(Date.now() + BP_PENDING_MS).toISOString();
         }
-      }
-      if (session.duelId) await settleBlockPuzzleDuel(db, session.duelId);
-      maybeAwardReferralBonus(db, session.userId);
-      await saveDbPartial(db, ['blockPuzzleMatches', 'users', 'transactions', 'tournaments', 'tournamentEntries', 'referrals']);
-      return { match: blockPuzzlePublicMatch(session, db), user: db.users.find(u => u.id === req.user.id) };
-    });
+        if (session.duelId) await settleBlockPuzzleDuel(db, session.duelId);
+        maybeAwardReferralBonus(db, session.userId);
+        await saveDbPartial(db, ['blockPuzzleMatches', 'users', 'transactions', 'tournaments', 'tournamentEntries', 'referrals']);
+        return { match: blockPuzzlePublicMatch(session, db), user: db.users.find(u => u.id === payload.userId) };
+      });
+    } else {
+      const db = await loadDb();
+      const session = (db.blockPuzzleMatches || []).find(m => m.id === req.params.id && m.userId === payload.userId);
+      const user = (db.users || []).find(u => u.id === payload.userId);
+      if (!session || !user) return res.status(404).json({ message: 'Block Puzzle match not found.' });
+      result = { match: blockPuzzlePublicMatch(session, db), user };
+    }
     res.json({ match: result.match, user: publicUser(result.user) });
   } catch (err) { res.status(err.statusCode || 503).json({ message: err?.message || 'স্কোর সাবমিট করা যায়নি।' }); }
 });
-
 const blockPuzzleCleanup = async (req, res) => {
   const secret = process.env.CRON_SECRET?.trim();
   const authHeader = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
@@ -1277,13 +1266,30 @@ app.get('/api/admin/block-puzzle/matches', auth, admin, (req, res) => {
   res.json({ matches: [...groups.values()] });
 });
 app.delete('/api/admin/block-puzzle/matches/:id', auth, admin, async (req, res) => {
-  const key = req.params.id;
-  const items = req.db.blockPuzzleMatches || [];
-  const targets = items.filter(s => s.duelId === key || s.id === key);
-  if (!targets.length) return res.status(404).json({ message: 'Block Puzzle match not found.' });
-  if (targets.some(s => !['COMPLETED','REFUNDED'].includes(s.status))) return res.status(409).json({ message: 'শুধু সম্পন্ন/রিফান্ড হওয়া ম্যাচ ডিলিট করা যাবে।' });
-  req.db.blockPuzzleMatches = items.filter(s => !(s.duelId === key || s.id === key));
-  await saveDb(req.db); res.json({ ok: true });
+  const key = String(req.params.id || '');
+  try {
+    const result = await withDbLock(async () => {
+      // Reload the latest DB state inside the lock so an Admin delete cannot
+      // overwrite a newer match/score update from another request.
+      const db = await loadDb();
+      const items = db.blockPuzzleMatches || [];
+      const targets = items.filter(s => String(s.duelId || '') === key || String(s.id || '') === key);
+      if (!targets.length) return { statusCode: 404, message: 'Block Puzzle match not found.' };
+      const terminal = new Set(['COMPLETED', 'REFUNDED']);
+      if (targets.some(s => !terminal.has(String(s.status || '').toUpperCase()))) {
+        return { statusCode: 409, message: 'শুধু সম্পন্ন/রিফান্ড হওয়া ম্যাচ ডিলিট করা যাবে।' };
+      }
+      db.blockPuzzleMatches = items.filter(s => !(String(s.duelId || '') === key || String(s.id || '') === key));
+      // Only the match-history collection is persisted here; other app state
+      // is intentionally left untouched.
+      await saveDbPartial(db, ['blockPuzzleMatches']);
+      return { ok: true };
+    });
+    if (result.statusCode) return res.status(result.statusCode).json({ message: result.message });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(err.statusCode || 503).json({ message: err?.message || 'Match delete করা যায়নি।' });
+  }
 });
 
 app.get('/api/matches', auth, (req, res) => res.json({ matches: req.db.matches || [] }));

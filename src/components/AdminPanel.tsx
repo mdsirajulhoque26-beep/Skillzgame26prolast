@@ -703,7 +703,7 @@ export const AdminPanel: React.FC = () => {
                     <div className="text-[11px] text-slate-400">Entry ৳{m.entryFee} • Prize ৳{m.prizeAmount} • {m.status}</div>
                   </div>
                   {['completed','refunded'].includes(String(m.status).toLowerCase()) && (
-                    <button onClick={async () => { await backendApi.deleteAdminBlockPuzzleMatch(m.id); await refreshBlockPuzzleMatches(); }} className="px-3 py-2 rounded-xl bg-red-500/15 border border-red-500/40 text-red-300 text-xs font-black"><Trash2 className="w-4 h-4 inline mr-1" />মুছুন</button>
+                    <button onClick={async () => { if (!window.confirm(`Match #${String(m.id).slice(-6)} মুছে ফেলবেন?`)) return; try { await backendApi.deleteAdminBlockPuzzleMatch(m.id); await refreshBlockPuzzleMatches(); showToast('Match সফলভাবে মুছে ফেলা হয়েছে।'); } catch (e:any) { showToast(e?.message || 'Match delete করা যায়নি।', 'error'); } }} className="px-3 py-2 rounded-xl bg-red-500/15 border border-red-500/40 text-red-300 text-xs font-black"><Trash2 className="w-4 h-4 inline mr-1" />মুছুন</button>
                   )}
                 </div>
                 <div className="grid grid-cols-2 gap-2">
