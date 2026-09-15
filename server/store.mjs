@@ -165,13 +165,36 @@ export async function saveDbPartial(db, keys = []) {
 // existing locked flow for correctness.
 export async function submitBlockPuzzleScoreFast(matchId, userId, score, linesCleared = 0, bestCombo = 0) {
   const collection = await getCollection();
-  const projection = {
-    'data.blockPuzzleMatches': { $elemMatch: { id: String(matchId), userId: String(userId) } },
-    'data.users': { $elemMatch: { id: String(userId) } }
-  };
-  const before = await collection.findOne({ _id: STATE_ID }, { projection });
-  const session = before?.data?.blockPuzzleMatches?.[0] || null;
-  const user = before?.data?.users?.[0] || null;
+  // MongoDB does not allow $elemMatch projection on fields nested under
+  // `data`. Use an aggregation projection instead, which returns only the
+  // matching match and user without reading the whole application state into
+  // the Node.js process.
+  const docs = await collection.aggregate([
+    { $match: { _id: STATE_ID } },
+    { $project: {
+      blockPuzzleMatches: {
+        $filter: {
+          input: { $ifNull: ['$data.blockPuzzleMatches', []] },
+          as: 'm',
+          cond: { $and: [
+            { $eq: ['$$m.id', String(matchId)] },
+            { $eq: ['$$m.userId', String(userId)] }
+          ] }
+        }
+      },
+      users: {
+        $filter: {
+          input: { $ifNull: ['$data.users', []] },
+          as: 'u',
+          cond: { $eq: ['$$u.id', String(userId)] }
+        }
+      }
+    } },
+    { $limit: 1 }
+  ]).toArray();
+  const before = docs[0] || null;
+  const session = before?.blockPuzzleMatches?.[0] || null;
+  const user = before?.users?.[0] || null;
   if (!session) return { ok: false, statusCode: 404, message: 'Block Puzzle match not found.' };
   if (!['PLAYING', 'SUBMITTED'].includes(String(session.status))) {
     return { ok: false, statusCode: 409, message: 'এই ম্যাচটি আর সাবমিট করা যাবে না।' };
