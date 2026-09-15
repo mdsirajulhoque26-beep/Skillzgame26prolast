@@ -62,6 +62,7 @@ export const backendApi = {
   activeBlockPuzzleMatch: () => request<{ match: any | null }>('/block-puzzle/matches/active'),
   myBlockPuzzleMatches: () => request<{ matches: any[] }>('/block-puzzle/matches/mine'),
   pendingGames: () => request<{ items: any[] }>('/pending-games'),
+  history: () => request<{ items: any[] }>('/history'),
   activeBlockPuzzleLeaderboard: () => request<{ leaderboard: any | null }>('/block-puzzle/leaderboard/active'),
   adminBlockPuzzleLeaderboards: () => request<{ leaderboards: any[] }>('/admin/block-puzzle/leaderboards'),
   createBlockPuzzleLeaderboard: (payload: any) => request<{ leaderboard: any }>('/admin/block-puzzle/leaderboards', { method: 'POST', body: JSON.stringify(payload) }),

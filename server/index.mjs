@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import crypto from 'node:crypto';
-import { loadDb, saveDb, saveDbPartial, pingDb, id, now, hashPassword, verifyPassword, publicUser, withDbLock } from './store.mjs';
+import { loadDb, loadHistoryDb, saveDb, saveDbPartial, pingDb, id, now, hashPassword, verifyPassword, publicUser, withDbLock } from './store.mjs';
 
 const app = express();
 app.disable('x-powered-by');
@@ -881,6 +881,90 @@ app.get('/api/cron/expire-pending', async (req, res) => {
     res.json({ ok: true, changed });
   } catch (err) {
     res.status(503).json({ message: err?.message || 'Pending match cleanup unavailable.' });
+  }
+});
+
+app.get('/api/history', async (req, res) => {
+  try {
+    const authHeader = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    const payload = readToken(authHeader);
+    if (!payload?.userId) return res.status(401).json({ message: 'Unauthorized' });
+
+    const db = await loadHistoryDb();
+    const uid = String(payload.userId);
+    const user = (db.users || []).find(u => String(u.id) === uid);
+    if (!user) return res.status(403).json({ message: 'Account unavailable' });
+
+    const items = [];
+    const matches = Array.isArray(db.blockPuzzleMatches) ? db.blockPuzzleMatches : [];
+    const tournaments = Array.isArray(db.tournaments) ? db.tournaments : [];
+    const entries = Array.isArray(db.tournamentEntries) ? db.tournamentEntries : [];
+    const users = Array.isArray(db.users) ? db.users : [];
+
+    for (const m of matches) {
+      if (String(m.userId) !== uid) continue;
+      if (m.refunded && String(m.status).toUpperCase() !== 'REFUNDED') continue;
+      const tournament = m.tournamentId ? tournaments.find(t => String(t.id) === String(m.tournamentId)) : null;
+      const opponent = m.opponentUserId ? users.find(u => String(u.id) === String(m.opponentUserId)) : null;
+      items.push({
+        id: String(m.id), matchId: String(m.id),
+        type: tournament ? 'TOURNAMENT_MATCH' : 'PRO_MATCH',
+        gameType: String(m.gameType || 'block_puzzle'),
+        title: tournament?.name || (m.gameType === 'nut_sort' ? 'Nut Sort 1v1' : 'Pro Match'),
+        status: String(m.status || ''), outcome: m.outcome || null,
+        entryFee: Number(m.entryFee || 0), prizeAmount: Number(m.prizeAmount || 0),
+        score: m.score == null ? null : Number(m.score),
+        linesCleared: Number(m.linesCleared || 0), bestCombo: Number(m.bestCombo || 0),
+        playerCount: Number(m.playerCount || 2),
+        opponent: opponent ? { userId: opponent.id, name: opponent.name || 'Opponent' } : null,
+        createdAt: m.createdAt || null, submittedAt: m.submittedAt || null, settledAt: m.settledAt || null,
+        tournamentId: m.tournamentId || null, refunded: Boolean(m.refunded),
+      });
+    }
+
+    for (const t of tournaments) {
+      if (String(t.status).toUpperCase() !== 'ACTIVE') continue;
+      const e = entries.find(x => String(x.tournamentId) === String(t.id) && String(x.userId) === uid);
+      if (!e) continue;
+      const hasSession = matches.some(m => String(m.tournamentId) === String(t.id) && String(m.userId) === uid && ['PENDING','PLAYING','SUBMITTED'].includes(String(m.status).toUpperCase()));
+      if (hasSession) continue;
+      items.push({
+        id: `tournament_${t.id}_${uid}`, matchId: `tournament_${t.id}_${uid}`,
+        type: 'TOURNAMENT', gameType: 'block_puzzle_tournament', title: t.name || 'Tournament',
+        status: 'PENDING', entryFee: Number(t.entryFee || 0), prizeAmount: Number(t.prizePool || 0),
+        score: Number(e.bestScore || 0), attempts: Number(e.attempts || 0),
+        createdAt: e.joinedAt || t.createdAt || null, tournamentId: t.id,
+      });
+    }
+
+    for (const m of (db.matches || [])) {
+      const player = (m.joinedPlayers || []).find(p => String(p.userId) === uid);
+      if (!player) continue;
+      items.push({
+        id: String(m.id), matchId: String(m.id), type: 'MATCH', gameType: String(m.category || 'match'),
+        title: m.title || `Match #${m.matchNo || m.id}`, status: String(m.status || 'open').toUpperCase(),
+        entryFee: Number(m.entryFee || 0), prizeAmount: Number(m.totalPrize || 0), score: Number(player.score || 0),
+        createdAt: m.createdAt || null, matchNo: m.matchNo || null,
+      });
+    }
+
+    for (const m of (db.arcadeMatches || [])) {
+      if (!(m.players || []).some(p => String(p.userId) === uid)) continue;
+      const mine = (m.players || []).find(p => String(p.userId) === uid);
+      const opp = (m.players || []).find(p => String(p.userId) !== uid);
+      items.push({
+        id: String(m.id), matchId: String(m.id), type: 'ARCADE_MATCH', gameType: String(m.gameType || 'online'),
+        title: String(m.gameType || 'Online Match').toUpperCase(), status: String(m.status || '').toUpperCase(),
+        entryFee: Number(m.entryFee || 0), prizeAmount: Number(m.prizeAmount || 0), score: Number(mine?.score || 0),
+        opponent: opp ? { name: opp.name || 'Opponent', score: Number(opp.score || 0) } : null,
+        createdAt: m.createdAt || null,
+      });
+    }
+
+    items.sort((a, b) => (Date.parse(b.settledAt || b.createdAt || '') || 0) - (Date.parse(a.settledAt || a.createdAt || '') || 0));
+    res.json({ items });
+  } catch (err) {
+    res.status(503).json({ message: err?.message || 'History unavailable.' });
   }
 });
 

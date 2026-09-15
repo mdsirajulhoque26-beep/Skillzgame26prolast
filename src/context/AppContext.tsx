@@ -287,57 +287,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const getMyPendingGames = async () => {
-    // Build the feed from BOTH server sources in parallel. Running these
-    // requests one after another made History unnecessarily slow on a busy or
-    // cold Vercel/Mongo connection: the 12s History timeout could expire while
-    // the second request was still waiting. Each feed is optional; if one
-    // endpoint is temporarily unavailable, the other can still populate the
-    // player's history.
-    const merged = new Map<string, any>();
-    const [pendingResult, mineResult] = await Promise.allSettled([
-      backendApi.pendingGames(),
-      backendApi.myBlockPuzzleMatches(),
-    ]);
-
-    let successfulFeeds = 0;
-
-    if (pendingResult.status === 'fulfilled') {
-      successfulFeeds += 1;
-      for (const item of (pendingResult.value.items || [])) {
-        const key = String(item.matchId || item.id);
-        if (key) merged.set(key, item);
-      }
-    } else {
-      console.warn('Pending-games feed unavailable; continuing with Pro Match history.', pendingResult.reason);
-    }
-
-    if (mineResult.status === 'fulfilled') {
-      successfulFeeds += 1;
-      for (const m of (mineResult.value.matches || [])) {
-        const item = {
-          ...m,
-          type: m.tournamentId ? 'TOURNAMENT_MATCH' : 'PRO_MATCH',
-          gameType: m.gameType || 'block_puzzle',
-          title: m.gameType === 'nut_sort' ? 'Nut Sort 1v1' : 'Pro Match',
-          prizeAmount: Number(m.prizeAmount || 0),
-          opponent: m.opponent || null,
-        };
-        const key = String(item.matchId || item.id);
-        if (key) merged.set(key, { ...(merged.get(key) || {}), ...item });
-      }
-    } else {
-      console.warn('Pro Match history feed unavailable.', mineResult.reason);
-    }
-
-    // Do not silently show an empty history when the API/auth/database is
-    // completely unavailable. The History screen can then show its retry UI.
-    if (successfulFeeds === 0) {
-      throw new Error('History API unavailable');
-    }
-
-    return Array.from(merged.values()).sort((a: any, b: any) =>
-      (Date.parse(b.createdAt || '') || 0) - (Date.parse(a.createdAt || '') || 0)
-    );
+    const data = await backendApi.history();
+    return data.items || [];
   };
 
   const getBlockPuzzleMatchStatus = async (matchId: string) => {

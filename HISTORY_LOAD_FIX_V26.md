@@ -7,3 +7,6 @@ Fix:
 - If either read-only history endpoint is temporarily unavailable, the other can still populate History.
 - History timeout increased from 12s to 18s to tolerate a cold/slow database connection without looping forever.
 - If both endpoints fail, the existing retry UI is shown.
+
+
+V27: History now uses a dedicated lightweight /api/history endpoint with Mongo projection so the full app-state document is not loaded for history requests. Existing gameplay, submit, settings and matchmaking routes are unchanged.

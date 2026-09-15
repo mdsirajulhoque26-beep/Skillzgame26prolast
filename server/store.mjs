@@ -61,6 +61,68 @@ export async function loadDb() {
   return data;
 }
 
+export async function loadHistoryDb() {
+  const collection = await getCollection();
+  const doc = await collection.findOne(
+    { _id: STATE_ID },
+    { projection: {
+      'data.blockPuzzleMatches.id': 1,
+      'data.blockPuzzleMatches.userId': 1,
+      'data.blockPuzzleMatches.userName': 1,
+      'data.blockPuzzleMatches.gameType': 1,
+      'data.blockPuzzleMatches.tournamentId': 1,
+      'data.blockPuzzleMatches.duelId': 1,
+      'data.blockPuzzleMatches.opponentUserId': 1,
+      'data.blockPuzzleMatches.playerCount': 1,
+      'data.blockPuzzleMatches.entryFee': 1,
+      'data.blockPuzzleMatches.prizeAmount': 1,
+      'data.blockPuzzleMatches.prizeDistribution': 1,
+      'data.blockPuzzleMatches.status': 1,
+      'data.blockPuzzleMatches.outcome': 1,
+      'data.blockPuzzleMatches.winnerId': 1,
+      'data.blockPuzzleMatches.score': 1,
+      'data.blockPuzzleMatches.linesCleared': 1,
+      'data.blockPuzzleMatches.bestCombo': 1,
+      'data.blockPuzzleMatches.createdAt': 1,
+      'data.blockPuzzleMatches.submittedAt': 1,
+      'data.blockPuzzleMatches.settledAt': 1,
+      'data.blockPuzzleMatches.refunded': 1,
+      'data.tournaments.id': 1,
+      'data.tournaments.name': 1,
+      'data.tournaments.status': 1,
+      'data.tournaments.entryFee': 1,
+      'data.tournaments.prizePool': 1,
+      'data.tournaments.createdAt': 1,
+      'data.tournamentEntries.tournamentId': 1,
+      'data.tournamentEntries.userId': 1,
+      'data.tournamentEntries.bestScore': 1,
+      'data.tournamentEntries.attempts': 1,
+      'data.tournamentEntries.joinedAt': 1,
+      'data.matches.id': 1,
+      'data.matches.category': 1,
+      'data.matches.title': 1,
+      'data.matches.status': 1,
+      'data.matches.entryFee': 1,
+      'data.matches.totalPrize': 1,
+      'data.matches.createdAt': 1,
+      'data.matches.matchNo': 1,
+      'data.matches.joinedPlayers.userId': 1,
+      'data.matches.joinedPlayers.score': 1,
+      'data.arcadeMatches.id': 1,
+      'data.arcadeMatches.gameType': 1,
+      'data.arcadeMatches.status': 1,
+      'data.arcadeMatches.entryFee': 1,
+      'data.arcadeMatches.createdAt': 1,
+      'data.arcadeMatches.players.userId': 1,
+      'data.arcadeMatches.players.name': 1,
+      'data.arcadeMatches.players.score': 1,
+      'data.users.id': 1,
+      'data.users.name': 1,
+    } }
+  );
+  return doc?.data || { blockPuzzleMatches: [], tournaments: [], tournamentEntries: [], matches: [], arcadeMatches: [], users: [] };
+}
+
 export async function pingDb() {
   const collection = await getCollection();
   await collection.findOne({ _id: STATE_ID }, { projection: { _id: 1 } });
