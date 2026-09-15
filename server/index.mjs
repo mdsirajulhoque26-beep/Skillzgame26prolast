@@ -459,8 +459,18 @@ function findJoinableBlockPuzzleMatch(db, session, entryFee, prizeAmount, player
   }
   const live = candidates.find(m => !m.duelId && m.status === 'PLAYING' && m.gameStartedAt && Date.parse(m.gameStartedAt) + BP_GAME_MS > Date.now());
   if (live) return { target: live, kind: 'LIVE', groupCount: 1 };
-  const pending = candidates.find(m => !m.duelId && m.status === 'PENDING' && (!m.pendingUntil || Date.parse(m.pendingUntil) > Date.now()));
-  return pending ? { target: pending, kind: 'PENDING', groupCount: 1 } : null;
+  // A solo player who already submitted is still an open asynchronous
+  // matchmaking target until the pending window expires. Do not require a
+  // duelId here: the first submitted player may not have been grouped yet.
+  const openStatuses = new Set(['PENDING', 'PLAYING', 'SUBMITTED']);
+  const open = candidates.find(m =>
+    !m.duelId && openStatuses.has(String(m.status || '').toUpperCase()) &&
+    (!m.pendingUntil || Date.parse(m.pendingUntil) > Date.now())
+  );
+  if (open) {
+    return { target: open, kind: String(open.status || '').toUpperCase(), groupCount: 1 };
+  }
+  return null;
 }
 
 

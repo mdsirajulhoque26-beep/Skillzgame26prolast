@@ -267,7 +267,11 @@ export function calculateMoveScore(
       bannerType = 'FIRE_STREAK';
     }
   } else {
-    newCombo = 0; // Combo resets when no lines are cleared
+    // A streak is consecutive clearing moves. If this move clears no line,
+    // both combo and streak must reset immediately. Otherwise the streak
+    // bonus keeps growing even after the player has broken the streak.
+    newCombo = 0;
+    newStreak = 0;
   }
 
   const comboBonus = newCombo > 1 ? (newCombo - 1) * 50 : 0;
