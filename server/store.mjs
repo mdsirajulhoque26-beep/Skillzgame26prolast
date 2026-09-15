@@ -167,7 +167,7 @@ export async function withDbLock(fn, timeoutMs = 20000) {
   const locks = collection.db.collection(LOCK_COLLECTION_NAME);
   const owner = crypto.randomUUID();
   const deadline = Date.now() + timeoutMs;
-  const leaseMs = 60000;
+  const leaseMs = 15000;
   let acquired = false;
 
   while (Date.now() < deadline) {

@@ -77,6 +77,18 @@ async function auth(req, res, next) {
     next();
   } catch (err) { next(err); }
 }
+
+// Submit-only auth validates the signed token without doing an extra full DB read.
+// The submit handler reads the fresh DB exactly once while holding the existing lock.
+async function authTokenOnly(req, res, next) {
+  try {
+    const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    const payload = readToken(token);
+    if (!payload?.userId) return res.status(401).json({ message: 'Unauthorized' });
+    req.authUserId = payload.userId;
+    next();
+  } catch (err) { next(err); }
+}
 function admin(req, res, next) {
   if (!req.user?.isAdmin) return res.status(403).json({ message: 'Admin access required' });
   next();
@@ -1080,7 +1092,11 @@ app.post('/api/block-puzzle/matches/:id/pause', auth, async (req, res) => {
   try {
     const result = await withDbLock(async () => {
       const db = await loadDb();
-      const session = (db.blockPuzzleMatches || []).find(m => m.id === req.params.id && m.userId === req.user.id);
+      const user = (db.users || []).find(u => u.id === req.authUserId);
+      if (!user || user.isBanned) throw Object.assign(new Error('Account unavailable'), { statusCode: 403 });
+      req.user = user;
+      req.db = db;
+      const session = (db.blockPuzzleMatches || []).find(m => m.id === req.params.id && m.userId === user.id);
       if (!session) throw Object.assign(new Error('Block Puzzle match not found.'), { statusCode: 404 });
       if (!['PLAYING'].includes(session.status)) throw Object.assign(new Error('এই ম্যাচটি এখন Pause করা যাবে না।'), { statusCode: 409 });
       if (session.pauseStartedAt) return { match: blockPuzzlePublicMatch(session, db), user: db.users.find(u => u.id === req.user.id) };
@@ -1119,7 +1135,7 @@ app.post('/api/block-puzzle/matches/:id/resume', auth, async (req, res) => {
   } catch (err) { res.status(err.statusCode || 503).json({ message: err?.message || 'ম্যাচ Resume করা যায়নি।' }); }
 });
 
-app.post('/api/block-puzzle/matches/:id/submit', auth, async (req, res) => {
+app.post('/api/block-puzzle/matches/:id/submit', authTokenOnly, async (req, res) => {
   try {
     const result = await withDbLock(async () => {
       const db = await loadDb();

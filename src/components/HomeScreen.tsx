@@ -13,23 +13,42 @@ import {
 } from 'lucide-react';
 import { backendApi } from '../services/backendApi';
 
+// Keep the last successful Home payload across tab unmount/remounts so players
+// never see the full Home loading state just because they navigated away.
+let homeGamesCache: any[] | null = null;
+let homeTournamentsCache: any[] | null = null;
+
 export const HomeScreen: React.FC = () => {
   const { setCurrentTab, openModal, paymentSettings } = useApp();
   const [games, setGames] = useState<any[]>([]);
-  const [gamesLoading, setGamesLoading] = useState(true);
+  const [gamesLoading, setGamesLoading] = useState(homeGamesCache === null);
   const [tournaments, setTournaments] = useState<any[]>([]);
-  const [tournamentLoading, setTournamentLoading] = useState(true);
+  const [tournamentLoading, setTournamentLoading] = useState(homeTournamentsCache === null);
   const [joiningTournament, setJoiningTournament] = useState<string>('');
   const [selectedTournament, setSelectedTournament] = useState<any | null>(null);
   const [detailTab, setDetailTab] = useState<'prizes' | 'rules'>('prizes');
 
   useEffect(() => {
     let alive = true;
+    if (homeGamesCache) setGames(homeGamesCache);
+    if (homeTournamentsCache) setTournaments(homeTournamentsCache);
     const loadGames = async () => {
-      try { const data = await backendApi.games(); if (alive) setGames(data.games || []); try { const td = await backendApi.tournaments(); if (alive) setTournaments(td.tournaments || []); } catch { if (alive) setTournaments([]); } }
-      catch (e) { console.error('Failed to load games:', e); if (alive) setGames([]); }
-      finally { if (alive) { setGamesLoading(false); setTournamentLoading(false); } }
+      try {
+        const [data, td] = await Promise.all([backendApi.games(), backendApi.tournaments()]);
+        if (!alive) return;
+        const nextGames = data.games || [];
+        const nextTournaments = td.tournaments || [];
+        homeGamesCache = nextGames;
+        homeTournamentsCache = nextTournaments;
+        setGames(nextGames);
+        setTournaments(nextTournaments);
+      } catch (e) {
+        console.error('Failed to refresh Home data:', e);
+      } finally {
+        if (alive) { setGamesLoading(false); setTournamentLoading(false); }
+      }
     };
+    // Cached data is shown immediately; refresh happens silently in background.
     loadGames();
     const timer = window.setInterval(loadGames, 15000);
     return () => { alive = false; window.clearInterval(timer); };
