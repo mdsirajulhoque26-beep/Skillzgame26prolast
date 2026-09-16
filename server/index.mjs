@@ -772,7 +772,8 @@ app.post('/api/block-puzzle/matches/start', auth, async (req, res) => {
   try {
     const result = await withDbLock(async () => {
       const db = await loadDb();
-      await expireBlockPuzzleMatches(db);
+      // V49: skip the full historical expiration scan during startup;
+      // matchmaking checks timestamps and cleanup runs separately.
       const requestedGameType = safeText(req.body?.gameType || 'block_puzzle', 40).toLowerCase();
       const gameType = requestedGameType === 'nut_sort' ? 'nut_sort' : 'block_puzzle';
       const entryFee = money(Number(req.body?.entryFee));
@@ -902,7 +903,8 @@ app.post('/api/block-puzzle/matches/start', auth, async (req, res) => {
           }
         }
       }
-      await saveDb(db);
+      // V49: only persist arrays changed by Pro Match startup.
+      await saveDbPartial(db, ['users', 'blockPuzzleMatches', 'transactions']);
       return { session, db };
     });
     res.status(201).json({ match: blockPuzzlePublicMatch(result.session, result.db), user: publicUser(result.db.users.find(u => u.id === req.user.id)) });

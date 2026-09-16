@@ -24,13 +24,13 @@ export const BlockTrayView: React.FC<BlockTrayViewProps> = ({
     <div className="w-full max-w-[390px] mx-auto select-none">
       {/* 3 Slots Container */}
       <div className="bg-[#090e23] p-2.5 rounded-2xl border-2 border-[#1c2754] shadow-xl">
-        <div className="grid grid-cols-3 gap-2.5 min-h-[128px] items-center">
+        <div className="grid grid-cols-3 gap-2.5 min-h-[140px] items-center">
           {pieces.map((piece, idx) => {
             if (!piece) {
               return (
                 <div
                   key={`empty-slot-${idx}`}
-                  className="h-32 rounded-xl border border-dashed border-[#1a254d]/60 bg-[#050816]/40 flex items-center justify-center text-[10px] text-slate-600 font-medium select-none"
+                  className="h-36 rounded-xl border border-dashed border-[#1a254d]/60 bg-[#050816]/40 flex items-center justify-center text-[10px] text-slate-600 font-medium select-none"
                 >
                   Used
                 </div>
@@ -70,7 +70,7 @@ export const BlockTrayView: React.FC<BlockTrayViewProps> = ({
                       {row.map((cell, c) => (
                         <div
                           key={c}
-                          className={`w-[30px] h-[30px] rounded-[6px] ${
+                          className={`w-[34px] h-[34px] rounded-[6px] ${
                             cell !== 0
                               ? 'border-t border-l border-white/40 border-b border-r border-black/40 shadow-sm'
                               : 'opacity-0'

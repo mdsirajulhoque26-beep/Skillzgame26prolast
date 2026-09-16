@@ -88,7 +88,7 @@
 }
 
 .block-puzzle-grid {
-  width: min(100%, 510px, calc(100dvh - 300px));
+  width: min(100%, 510px, calc(100dvh - 340px));
   height: auto;
   max-height: 100%;
   flex: 0 0 auto;
@@ -112,7 +112,7 @@
   }
   .block-gameplay-tray,
   .block-gameplay-tray > div {
-    max-height: 116px;
+    max-height: 128px;
   }
   .block-gameplay-controls {
     min-height: 46px;
@@ -122,7 +122,7 @@
 @media (max-height: 620px) {
   .block-gameplay-tray,
   .block-gameplay-tray > div {
-    max-height: 104px;
+    max-height: 118px;
   }
   .block-gameplay-controls {
     min-height: 44px;
@@ -156,6 +156,7 @@
 }
 
 .block-gameplay-tray {
+  max-height: 145px;
   transform: scale(1.02);
   transform-origin: center bottom;
 }
