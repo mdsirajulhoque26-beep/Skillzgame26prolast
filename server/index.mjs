@@ -401,6 +401,23 @@ function publicLeaderboard(db, board) {
   return { ...board, entries, status: ended ? 'ENDED' : 'ACTIVE' };
 }
 
+// A Pro Match is joinable only when its entry fee was actually charged.
+// New sessions carry entryFeePaid=true; legacy sessions are verified against
+// the matching entry transaction so an uncharged/zero-score session can never
+// become a prize-paying matchmaking target.
+function blockPuzzleEntryFeePaid(db, session) {
+  if (!session) return false;
+  if (session.entryFeePaid === true) return true;
+  const fee = money(Number(session.entryFee || 0));
+  if (!Number.isFinite(fee) || fee <= 0) return false;
+  return (db.transactions || []).some(t =>
+    String(t.matchId || '') === String(session.id) &&
+    String(t.userId || '') === String(session.userId || '') &&
+    String(t.type || '').toLowerCase() === 'match_loss' &&
+    Math.abs(Number(t.amount || 0) + fee) < 0.000001
+  );
+}
+
 // A player gets 3 minutes to play. If nobody joins during that game, the
 // finished score remains available for another 24 hours. A later player can then
 // join and play their own 3-minute game against that stored score.
@@ -417,6 +434,16 @@ async function expireBlockPuzzleMatches(db) {
     // their own deadline, submit that player's current score only. Never end
     // other players' clocks just because one member of the group finished.
     if (session.status === 'PLAYING' && session.gameStartedAt && Date.parse(session.gameStartedAt) + BP_GAME_MS <= nowMs) {
+      // Safety rule: if no entry fee was actually charged, this attempt must
+      // never enter SUBMITTED/open matchmaking and must never create a payout.
+      if (!blockPuzzleEntryFeePaid(db, session)) {
+        session.status = 'CANCELLED';
+        session.cancelReason = 'Entry fee was not charged';
+        session.cancelledAt = session.cancelledAt || now();
+        session.pendingUntil = null;
+        changed = true;
+        continue;
+      }
       session.status = 'SUBMITTED';
       session.gameEndedAt = session.gameEndedAt || now();
       session.submittedAt = session.submittedAt || now();
@@ -467,6 +494,7 @@ function findJoinableBlockPuzzleMatch(db, session, entryFee, prizeAmount, player
   const required = Math.max(2, Number(playerCount || 2));
   const candidates = (db.blockPuzzleMatches || []).filter(m =>
     m.id !== session.id && !m.tournamentId && !m.refunded &&
+    blockPuzzleEntryFeePaid(db, m) &&
     String(m.gameType || 'block_puzzle') === gameType && Number(m.entryFee) === entryFee && Number(m.prizeAmount) === prizeAmount &&
     Math.max(2, Number(m.playerCount || 2)) === required && m.userId !== session.userId &&
     isBlockPuzzleMatchmakingEligibleUser(db, m.userId)
@@ -827,7 +855,7 @@ app.post('/api/block-puzzle/matches/start', auth, async (req, res) => {
         liveState: null,
         liveUpdatedAt: null,
         userId: req.user.id, userName: req.user.name, userPhone: req.user.phone,
-        entryFee, prizeAmount, prizeDistribution, playerCount, status: 'PLAYING', createdAt, startsAt: gameStartedAt, gameStartedAt,
+        entryFee, entryFeePaid: true, prizeAmount, prizeDistribution, playerCount, status: 'PLAYING', createdAt, startsAt: gameStartedAt, gameStartedAt,
         pendingUntil, refunded: false
       };
       req.user.gamingBalance = money(req.user.gamingBalance - entryFee);
