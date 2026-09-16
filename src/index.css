@@ -160,3 +160,69 @@
   transform: scale(1.02);
   transform-origin: center bottom;
 }
+
+/* V50: Play Box final viewport-fit correction.
+   Visual/layout only: keeps game logic, drag/drop, scoring, timer and Pro Match behavior unchanged. */
+.block-puzzle-grid {
+  width: min(100%, 440px, clamp(300px, calc(100dvh - 400px), 440px)) !important;
+  max-width: 440px;
+  flex: 0 0 auto;
+}
+
+.block-gameplay-tray {
+  max-height: 126px !important;
+  transform: none !important;
+  transform-origin: center center !important;
+  overflow: visible;
+}
+
+.block-gameplay-tray > div {
+  max-height: 126px !important;
+  padding: 6px !important;
+}
+
+.block-gameplay-tray > div > div {
+  min-height: 0 !important;
+  height: 108px !important;
+  gap: 8px !important;
+}
+
+.block-gameplay-tray > div > div > div {
+  height: 104px !important;
+  min-height: 104px !important;
+  padding: 6px !important;
+}
+
+@media (max-height: 700px) {
+  .block-puzzle-grid {
+    width: min(100%, 420px, clamp(280px, calc(100dvh - 390px), 420px)) !important;
+  }
+  .block-gameplay-tray,
+  .block-gameplay-tray > div {
+    max-height: 116px !important;
+  }
+  .block-gameplay-tray > div > div {
+    height: 98px !important;
+  }
+  .block-gameplay-tray > div > div > div {
+    height: 94px !important;
+    min-height: 94px !important;
+  }
+}
+
+@media (max-height: 620px) {
+  .block-puzzle-grid {
+    width: min(100%, 390px, clamp(260px, calc(100dvh - 360px), 390px)) !important;
+  }
+  .block-gameplay-tray,
+  .block-gameplay-tray > div {
+    max-height: 106px !important;
+  }
+  .block-gameplay-tray > div > div {
+    height: 88px !important;
+  }
+  .block-gameplay-tray > div > div > div {
+    height: 84px !important;
+    min-height: 84px !important;
+  }
+}
