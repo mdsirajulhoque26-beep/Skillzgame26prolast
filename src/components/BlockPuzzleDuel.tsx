@@ -250,13 +250,6 @@ export const BlockPuzzleDuel: React.FC = () => {
 
   const activePendingCount = pendingMatches.filter(m => m.status === 'PENDING').length;
 
-  // Save after every meaningful gameplay state change. This is deliberately
-  // sessionStorage (not the server) so it cannot interfere with score settlement.
-  useEffect(() => {
-    if (!['duel', 'tournament'].includes(gameMode) || screenState !== 'playing') return;
-    const id = String(activeMatchId || 'pending');
-    saveLiveSnapshot(id, matchSeed, playerState, board, pieces, trioIndex, remainingTime);
-  }, [gameMode, screenState, activeMatchId, matchSeed, playerState, board, pieces, trioIndex, remainingTime, saveLiveSnapshot]);
 
   useEffect(() => {
     let alive = true;
@@ -448,6 +441,13 @@ export const BlockPuzzleDuel: React.FC = () => {
   });
 
   const matchTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Save after every meaningful gameplay state change.
+  useEffect(() => {
+    if (!['duel', 'tournament'].includes(gameMode) || screenState !== 'playing') return;
+    const id = String(activeMatchId || 'pending');
+    saveLiveSnapshot(id, matchSeed, playerState, board, pieces, trioIndex, remainingTime);
+  }, [gameMode, screenState, activeMatchId, matchSeed, playerState, board, pieces, trioIndex, remainingTime, saveLiveSnapshot]);
 
   // Toggle Mute / Haptic
   const handleToggleMute = () => {
