@@ -54,6 +54,7 @@ import {
 } from 'lucide-react';
 
 type ScreenState = 'lobby' | 'matchmaking' | 'countdown' | 'playing' | 'submit' | 'result' | 'tournament_rank';
+const TOTAL_MATCH_TIME = 180;
 
 export const BlockPuzzleDuel: React.FC = () => {
   const { 
@@ -426,7 +427,6 @@ export const BlockPuzzleDuel: React.FC = () => {
   const dragLatestRef = useRef<{ x: number; y: number } | null>(null);
 
   // Timer & Countdown (180s = 3:00 Minutes like Skillz Block Blitz in Video)
-  const TOTAL_MATCH_TIME = 180;
   const [countdown, setCountdown] = useState<number>(3);
   const [remainingTime, setRemainingTime] = useState<number>(TOTAL_MATCH_TIME);
 
