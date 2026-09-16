@@ -75,6 +75,8 @@ export const BlockPuzzleDuel: React.FC = () => {
 
   // Screen State
   const [screenState, setScreenState] = useState<ScreenState>('lobby');
+  const screenStateRef = useRef<ScreenState>('lobby');
+  useEffect(() => { screenStateRef.current = screenState; }, [screenState]);
   const [gameMode, setGameMode] = useState<BlockGameMode>('duel');
   const [difficulty, setDifficulty] = useState<PracticeDifficulty>('normal');
   const [entryFee, setEntryFee] = useState<number>(20);
@@ -93,6 +95,9 @@ export const BlockPuzzleDuel: React.FC = () => {
   const initializedMatchRef = useRef<string>('');
   const countdownMatchRef = useRef<string>('');
   const startDuelInProgressRef = useRef<boolean>(false);
+  const proStartPromiseRef = useRef<Promise<any> | null>(null);
+  const proStartFailedRef = useRef<boolean>(false);
+  const moveCountRef = useRef<number>(0);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
 
@@ -508,9 +513,15 @@ export const BlockPuzzleDuel: React.FC = () => {
   };
 
   // Start Entry Fee Duel Match
-  const handleStartDuel = async (fee: number, winPrize: number) => {
+  // The paid-game board opens immediately. The secure server start (entry-fee
+  // validation, balance debit, match creation and matchmaking) runs in parallel.
+  // If the server is slower than the player, final submission waits only for that
+  // already-running request; it never starts a second paid match.
+  const handleStartDuel = (fee: number, winPrize: number) => {
     blockAudio.playClick();
     startDuelInProgressRef.current = true;
+    proStartFailedRef.current = false;
+    moveCountRef.current = 0;
     setEntryFee(fee);
     setPrize(winPrize);
     setGameMode('duel');
@@ -521,32 +532,64 @@ export const BlockPuzzleDuel: React.FC = () => {
     setIsSubmittingScore(false);
     setScreenState('lobby');
 
-    const cfg = multiplayerProConfig;
-    const res = await startBlockPuzzleMatch(cfg ? Number(cfg.entryFee) : fee, cfg ? Number(cfg.prizeAmount) : winPrize, cfg ? Number(cfg.players) : 2);
-    startDuelInProgressRef.current = false;
-    if (!res.success) {
-      alert(res.message);
-      setScreenState('lobby');
-      return;
-    }
+    // Start rendering the real 3-minute board immediately, without waiting for
+    // MongoDB/network. The provisional seed is sent to the server so a fresh
+    // match keeps the same deterministic board seed.
+    const localSeed = Math.floor(Math.random() * 2147483646) + 1;
+    setMatchSeed(localSeed);
+    initMatch('duel', difficulty, undefined, localSeed);
 
-    const createdMatch = (res as any).match;
-    const createdMatchId = String(createdMatch?.id || (res as any).matchId || `bp_${Date.now()}`);
-    setActiveMatchId(createdMatchId);
-    // Do not block gameplay on the separate pending-history refresh.
-    // That endpoint is non-critical and may be slow on serverless deployments.
-    refreshBlockPuzzleMatches().catch(() => {});
-    const createdStart = createdMatch?.gameStartedAt || createdMatch?.startsAt || (res as any).gameStartedAt || (res as any).startsAt || null;
-    setServerGameStartedAt(createdStart);
-    if (createdMatch?.opponent) setMatchedOpponent({ name: createdMatch.opponent.name, score: Number(createdMatch.opponent.score || 0), linesCleared: Number(createdMatch.opponent.linesCleared || 0) });
-    if (Number.isFinite(Number(createdMatch?.gameSeed ?? (res as any).gameSeed))) setMatchSeed(Number(createdMatch?.gameSeed ?? (res as any).gameSeed));
-    // Match start is local and immediate. Use the same 3-second countdown as
-    // Practice Match; never wait for an opponent before starting the player's run.
-    const seed = Number(createdMatch?.gameSeed ?? (res as any).gameSeed) || null;
-    freshProMatchRef.current = createdMatchId;
-    initializedMatchRef.current = createdMatchId;
-    countdownMatchRef.current = createdMatchId;
-    startCountdown('duel', undefined, seed);
+    const cfg = multiplayerProConfig;
+    const startPromise = startBlockPuzzleMatch(
+      cfg ? Number(cfg.entryFee) : fee,
+      cfg ? Number(cfg.prizeAmount) : winPrize,
+      cfg ? Number(cfg.players) : 2,
+      'block_puzzle',
+      localSeed
+    );
+    proStartPromiseRef.current = startPromise;
+
+    void startPromise.then((res: any) => {
+      startDuelInProgressRef.current = false;
+      if (!res?.success) {
+        proStartFailedRef.current = true;
+        if (screenStateRef.current === 'playing' || screenStateRef.current === 'submit') {
+          alert(res?.message || 'ম্যাচ শুরু করা যায়নি।');
+          setScreenState('lobby');
+        }
+        return;
+      }
+      const createdMatch = res.match || {};
+      const createdMatchId = String(createdMatch?.id || res.matchId || '');
+      if (!createdMatchId) {
+        proStartFailedRef.current = true;
+        alert('ম্যাচ আইডি পাওয়া যায়নি।');
+        setScreenState('lobby');
+        return;
+      }
+      setActiveMatchId(createdMatchId);
+      refreshBlockPuzzleMatches().catch(() => {});
+      const createdStart = createdMatch?.gameStartedAt || createdMatch?.startsAt || res.gameStartedAt || res.startsAt || null;
+      setServerGameStartedAt(createdStart);
+      if (createdMatch?.opponent) setMatchedOpponent({ name: createdMatch.opponent.name, score: Number(createdMatch.opponent.score || 0), linesCleared: Number(createdMatch.opponent.linesCleared || 0) });
+      const serverSeed = Number(createdMatch?.gameSeed ?? res.gameSeed);
+      if (Number.isFinite(serverSeed) && serverSeed > 0 && serverSeed !== localSeed && moveCountRef.current === 0) {
+        // This only happens when the new player was paired with an older open
+        // match. Re-sync the untouched board to the shared server seed.
+        setMatchSeed(serverSeed);
+        setBoard(createEmptyBoard());
+        setTrioIndex(0);
+        setPieces(generateBlockTrio(serverSeed, 0, difficulty, false));
+        setPlayerState(prev => ({ ...prev, boardState: createEmptyBoard(), score: 0, linesCleared: 0, combo: 0, bestCombo: 0, streak: 0 }));
+      }
+    }).catch((e: any) => {
+      startDuelInProgressRef.current = false;
+      proStartFailedRef.current = true;
+      if (screenStateRef.current === 'playing' || screenStateRef.current === 'submit') {
+        alert(e?.message || 'ম্যাচ শুরু করা যায়নি।');
+        setScreenState('lobby');
+      }
+    });
   };
 
   // Start Practice Mode (Free)
@@ -702,12 +745,26 @@ export const BlockPuzzleDuel: React.FC = () => {
   // Submit score: the server owns the match/session. No local cross-account matchmaking.
   const handleSubmitScore = async () => {
     if (isSubmittingScore) return;
-    if (!activeMatchId) {
-      alert('ম্যাচ আইডি পাওয়া যায়নি।');
+    setIsSubmittingScore(true);
+
+    // If the player finished while the paid-start request was still in flight,
+    // wait for that same request and use its returned match id. Never create a
+    // second match just because the first response was slow.
+    let submitMatchId = activeMatchId;
+    if (!submitMatchId && proStartPromiseRef.current) {
+      try {
+        const started: any = await proStartPromiseRef.current;
+        submitMatchId = String(started?.match?.id || started?.matchId || '');
+        if (submitMatchId) setActiveMatchId(submitMatchId);
+      } catch {}
+    }
+    if (!submitMatchId) {
+      setIsSubmittingScore(false);
+      if (proStartFailedRef.current) { alert('ম্যাচটি সার্ভারে তৈরি হয়নি।'); setScreenState('lobby'); }
       return;
     }
-    setIsSubmittingScore(true);
-    const serverSubmit = await submitBlockPuzzleResult(activeMatchId, playerState.score, prize);
+
+    const serverSubmit = await submitBlockPuzzleResult(submitMatchId, playerState.score, prize);
     setIsSubmittingScore(false);
     if (!serverSubmit.success) {
       alert(serverSubmit.message);
@@ -742,10 +799,10 @@ export const BlockPuzzleDuel: React.FC = () => {
 
   // Paid matches submit automatically when the 3-minute timer ends.
   useEffect(() => {
-    if (screenState === 'submit' && gameMode === 'duel' && !isSubmittingScore && activeMatchId) {
+    if (screenState === 'submit' && gameMode === 'duel' && !isSubmittingScore) {
       handleSubmitScore();
     }
-  }, [screenState, gameMode, activeMatchId]);
+  }, [screenState, gameMode, activeMatchId, isSubmittingScore]);
 
   // Drag-and-drop only: a piece must be pressed and physically dragged to the board.
   // We use Pointer Events + pointer capture so Android touch dragging cannot lose the
@@ -891,6 +948,7 @@ export const BlockPuzzleDuel: React.FC = () => {
     }
 
     // Place block on board (using color code)
+    moveCountRef.current += 1;
     blockAudio.playPlace();
     const styleVal = ((pieceIndex + 1) % 6) + 1;
     const placedBoard = placeBlockOnBoard(board, pieceToPlace.matrix, placeR, placeC, styleVal);

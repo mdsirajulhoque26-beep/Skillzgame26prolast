@@ -226,3 +226,110 @@
     min-height: 84px !important;
   }
 }
+
+
+/* V53: reference-style Block Puzzle play box + 3D blocks.
+   VISUAL ONLY. Game rules, scoring, drag/drop and network behavior are untouched. */
+.block-board-frame {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.block-puzzle-grid {
+  gap: 1px !important;
+  padding: 1px !important;
+  border: 1px solid rgba(11, 23, 52, 0.9) !important;
+  border-radius: 2px !important;
+  background: #1b294c !important;
+  box-shadow: 0 8px 24px rgba(2, 8, 23, 0.45), inset 0 0 0 1px rgba(120, 150, 220, 0.06) !important;
+}
+
+.block-puzzle-grid > div:not(.absolute) {
+  border-radius: 0 !important;
+}
+
+.block-3d-board-cell,
+.block-3d-tray-cell {
+  border-radius: 0 !important;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.block-3d-board-cell::before,
+.block-3d-tray-cell::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  top: 0;
+  right: 0;
+  height: 24%;
+  background: linear-gradient(to bottom, rgba(255,255,255,.38), rgba(255,255,255,.08), transparent);
+  clip-path: polygon(0 0, 100% 0, 90% 100%, 8% 100%);
+  pointer-events: none;
+}
+
+.block-3d-board-cell::after,
+.block-3d-tray-cell::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  height: 24%;
+  background: linear-gradient(to top, rgba(0,0,0,.38), rgba(0,0,0,.08), transparent);
+  clip-path: polygon(8% 0, 90% 0, 100% 100%, 0 100%);
+  pointer-events: none;
+}
+
+.block-3d-board-cell {
+  border-top: 1px solid rgba(255,255,255,.22) !important;
+  border-left: 1px solid rgba(255,255,255,.18) !important;
+  border-right: 2px solid rgba(0,0,0,.32) !important;
+  border-bottom: 2px solid rgba(0,0,0,.36) !important;
+  box-shadow: inset 2px 2px 0 rgba(255,255,255,.07), inset -2px -2px 0 rgba(0,0,0,.12), 0 2px 4px rgba(0,0,0,.22) !important;
+}
+
+.block-3d-tray-cell {
+  border-top: 1px solid rgba(255,255,255,.38) !important;
+  border-left: 1px solid rgba(255,255,255,.32) !important;
+  border-right: 2px solid rgba(0,0,0,.34) !important;
+  border-bottom: 2px solid rgba(0,0,0,.4) !important;
+  box-shadow: inset 2px 2px 0 rgba(255,255,255,.09), inset -2px -2px 0 rgba(0,0,0,.14), 0 3px 5px rgba(0,0,0,.25) !important;
+}
+
+.block-tray-reference {
+  width: 100%;
+  max-width: 390px;
+  margin: 0 auto;
+  min-height: 108px;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 4px 8px;
+  background: transparent;
+}
+
+.block-tray-reference-slot {
+  min-width: 0;
+  min-height: 100px;
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-height: 700px) {
+  .block-tray-reference { min-height: 92px; padding-top: 2px; padding-bottom: 2px; }
+  .block-tray-reference-slot { min-height: 86px; }
+}
+
+@media (max-height: 620px) {
+  .block-tray-reference { min-height: 78px; }
+  .block-tray-reference-slot { min-height: 72px; }
+}

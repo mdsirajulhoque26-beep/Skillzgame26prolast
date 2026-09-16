@@ -162,9 +162,9 @@ export const BlockBoardView: React.FC<BlockBoardViewProps> = ({
                   data-row={r}
                   data-col={c}
                   onMouseEnter={() => onCellHover(r, c)}
-                  className={`relative rounded-[6px] flex items-center justify-center cursor-pointer overflow-hidden select-none ${
+                  className={`block-3d-board-cell relative flex items-center justify-center cursor-pointer overflow-hidden select-none ${
                     hasBlock
-                      ? `bg-gradient-to-b ${tileStyle.bg} border-t border-l ${tileStyle.border} border-b-2 border-r-2 border-black/40 shadow-sm`
+                      ? `bg-gradient-to-b ${tileStyle.bg} border-t border-l ${tileStyle.border} border-b-2 border-r-2 border-black/40`
                       : 'bg-[#0e1533]/80 hover:bg-[#15204d] border border-[#162045]/60'
                   } ${
                     isClearing
@@ -181,13 +181,13 @@ export const BlockBoardView: React.FC<BlockBoardViewProps> = ({
                       ? 'animate-pulse brightness-125 saturate-150'
                       : ''
                   }`}
-                  style={{
-                    boxShadow: hasBlock ? `0 1px 4px ${tileStyle.glow}` : undefined,
-                  }}
                 >
-                  {/* Glossy 3D Highlight on Top Edge of block */}
+                  {/* Reference-style beveled arcade face */}
                   {hasBlock && !isClearing && (
-                    <div className="absolute top-0 left-0 right-0 h-1/3 bg-white/25 rounded-t-[4px] pointer-events-none" />
+                    <>
+                      <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-black/10 pointer-events-none z-[1]" />
+                      <div className="absolute top-0 left-0 right-0 h-[18%] bg-white/10 pointer-events-none z-[3]" />
+                    </>
                   )}
 
                   {/* Ghost preview dot */}

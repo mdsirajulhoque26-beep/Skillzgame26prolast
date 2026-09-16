@@ -39,7 +39,7 @@ interface AppContextType {
   submitBlockPuzzleResult: (matchId: string, score: number, prizeAmount: number, image?: string) => Promise<{ success: boolean; message: string; match?: any }> ;
   refreshMatches: () => Promise<void>;
   isRefreshing: boolean;
-  startBlockPuzzleMatch: (entryFee: number, prize?: number, playerCount?: number, gameType?: string) => Promise<{ success: boolean; message: string; matchId?: string; gameStartedAt?: string | null; startsAt?: string | null; gameSeed?: number | null; playerCount?: number }>;
+  startBlockPuzzleMatch: (entryFee: number, prize?: number, playerCount?: number, gameType?: string, gameSeed?: number) => Promise<{ success: boolean; message: string; matchId?: string; gameStartedAt?: string | null; startsAt?: string | null; gameSeed?: number | null; playerCount?: number; match?: any }>;
   finishBlockPuzzleMatch: (matchId: string, entryFee: number, won: boolean, prize: number, score: number, isDraw?: boolean) => void;
   refundBlockPuzzleMatch: (matchId: string, entryFee: number, reason?: string) => Promise<{ success: boolean; message: string }>;
   getActiveBlockPuzzleMatch: () => Promise<any | null>;
@@ -315,9 +315,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e: any) { return { success: false, message: e?.message || 'ম্যাচ Resume করা যায়নি।' }; }
   };
 
-  const startBlockPuzzleMatch = async (entryFee: number, prize = 0, playerCount = 2, gameType = 'block_puzzle'): Promise<{ success: boolean; message: string; matchId?: string; gameStartedAt?: string | null; startsAt?: string | null; gameSeed?: number | null; playerCount?: number }> => {
+  const startBlockPuzzleMatch = async (entryFee: number, prize = 0, playerCount = 2, gameType = 'block_puzzle', gameSeed?: number): Promise<{ success: boolean; message: string; matchId?: string; gameStartedAt?: string | null; startsAt?: string | null; gameSeed?: number | null; playerCount?: number; match?: any }> => {
     try {
-      const data = await backendApi.startBlockPuzzleMatch(entryFee, prize, playerCount, gameType);
+      const data = await backendApi.startBlockPuzzleMatch(entryFee, prize, playerCount, gameType, gameSeed);
       applyApiUser(data.user);
       // Do not block Pro Match startup on the separate transaction-history
       // request. On a cold/serverless MongoDB connection that read can take
@@ -327,7 +327,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       backendApi.transactions()
         .then(tx => setTransactions(tx.transactions as Transaction[]))
         .catch(() => {});
-      return { success: true, message: 'ম্যাচ শুরু হয়েছে!', matchId: String(data.match.id), gameStartedAt: data.match.gameStartedAt || null, startsAt: data.match.startsAt || data.match.gameStartedAt || null, gameSeed: Number(data.match.gameSeed) || null, playerCount: Number(data.match.playerCount || playerCount) };
+      return { success: true, message: 'ম্যাচ শুরু হয়েছে!', match: data.match, matchId: String(data.match.id), gameStartedAt: data.match.gameStartedAt || null, startsAt: data.match.startsAt || data.match.gameStartedAt || null, gameSeed: Number(data.match.gameSeed) || null, playerCount: Number(data.match.playerCount || playerCount) };
     } catch (e: any) {
       return { success: false, message: e?.message || 'ম্যাচ শুরু করা যায়নি।' };
     }

@@ -796,10 +796,24 @@ app.get('/api/block-puzzle/matches/active', auth, async (req, res) => {
   } catch (err) { res.status(503).json({ message: err?.message || 'Matchmaking unavailable.' }); }
 });
 
-app.post('/api/block-puzzle/matches/start', auth, async (req, res) => {
+app.post('/api/block-puzzle/matches/start', async (req, res) => {
   try {
+    // Fast paid-start path: authenticate the signed token first, then load MongoDB
+    // exactly once inside the existing lock. The old route used `auth` (one full
+    // app_state read) and then loaded the same document again after acquiring the
+    // lock, so a cold Mongo connection could make a Pro Match appear stuck before
+    // the board opened.
+    const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    const payload = readToken(token);
+    if (!payload?.userId) return res.status(401).json({ message: 'Unauthorized' });
+
     const result = await withDbLock(async () => {
       const db = await loadDb();
+      const liveUser = (db.users || []).find(u => u.id === payload.userId);
+      if (!liveUser || liveUser.isBanned) throw Object.assign(new Error('Account unavailable'), { statusCode: 403 });
+      // Keep the rest of the original Pro Match validation and matchmaking logic
+      // unchanged; only use the fresh, single-read user from this critical path.
+      req.user = liveUser;
       // V49: skip the full historical expiration scan during startup;
       // matchmaking checks timestamps and cleanup runs separately.
       const requestedGameType = safeText(req.body?.gameType || 'block_puzzle', 40).toLowerCase();
@@ -850,7 +864,7 @@ app.post('/api/block-puzzle/matches/start', auth, async (req, res) => {
       const session = {
         id: id('bp'),
         gameType,
-        gameSeed: crypto.randomInt(1, 2147483646),
+        gameSeed: (Number.isInteger(Number(req.body?.gameSeed)) && Number(req.body.gameSeed) >= 1 && Number(req.body.gameSeed) <= 2147483646) ? Number(req.body.gameSeed) : crypto.randomInt(1, 2147483646),
         moveIndex: 0,
         liveState: null,
         liveUpdatedAt: null,
@@ -1300,14 +1314,21 @@ app.get('/api/block-puzzle/matches/mine', auth, async (req, res) => {
   } catch (err) { res.status(503).json({ message: err?.message || 'Block Puzzle match history unavailable.' }); }
 });
 
-app.get('/api/block-puzzle/matches/:id/status', auth, async (req, res) => {
+app.get('/api/block-puzzle/matches/:id/status', async (req, res) => {
   try {
-    // Read-only polling endpoint. Do not expire/settle or save here; doing so on
-    // every 1.5s poll made the legacy global lock a bottleneck on Vercel.
+    // Fast in-game heartbeat: authenticate the signed token locally and perform
+    // exactly one read. The previous `auth` middleware read app_state once and
+    // this handler read it a second time on every 1.5s poll. These checks now run
+    // cheaply in the background while the player keeps playing.
+    const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    const payload = readToken(token);
+    if (!payload?.userId) return res.status(401).json({ message: 'Unauthorized' });
     const db = await loadDb();
-    const session = (db.blockPuzzleMatches || []).find(m => m.id === req.params.id && m.userId === req.user.id);
-    if (!session) return res.json({ match: null, user: publicUser(db.users.find(u => u.id === req.user.id)) });
-    res.json({ match: blockPuzzlePublicMatch(session, db), user: publicUser(db.users.find(u => u.id === req.user.id)) });
+    const liveUser = (db.users || []).find(u => u.id === payload.userId);
+    if (!liveUser || liveUser.isBanned) return res.status(403).json({ message: 'Account unavailable' });
+    const session = (db.blockPuzzleMatches || []).find(m => m.id === req.params.id && m.userId === payload.userId);
+    if (!session) return res.json({ match: null, user: publicUser(liveUser) });
+    res.json({ match: blockPuzzlePublicMatch(session, db), user: publicUser(liveUser) });
   } catch (err) { res.status(503).json({ message: err?.message || 'Match status unavailable.' }); }
 });
 
@@ -1407,11 +1428,11 @@ app.post('/api/block-puzzle/matches/:id/submit', async (req, res) => {
         return { match: blockPuzzlePublicMatch(session, db), user: db.users.find(u => u.id === payload.userId) };
       });
     } else {
-      const db = await loadDb();
-      const session = (db.blockPuzzleMatches || []).find(m => m.id === req.params.id && m.userId === payload.userId);
-      const user = (db.users || []).find(u => u.id === payload.userId);
-      if (!session || !user) return res.status(404).json({ message: 'Block Puzzle match not found.' });
-      result = { match: blockPuzzlePublicMatch(session, db), user };
+      // Solo submission is already fully written by submitBlockPuzzleScoreFast().
+      // Do not perform another full MongoDB app_state read just to build the response.
+      const session = fast.session;
+      const user = fast.user;
+      result = { match: blockPuzzlePublicMatch(session, { users: [user] }), user };
     }
     res.json({ match: result.match, user: publicUser(result.user) });
   } catch (err) { res.status(err.statusCode || 503).json({ message: err?.message || 'স্কোর সাবমিট করা যায়নি।' }); }

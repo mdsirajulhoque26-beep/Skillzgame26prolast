@@ -15,23 +15,54 @@ const defaults = {
   }
 };
 
-let clientPromise;
-let collectionPromise;
+let clientPromise = null;
+let collectionPromise = null;
 
 function cloneDefaults() {
   return structuredClone(defaults);
 }
 
+// Keep the existing single MongoDB connection/pool, but make a transient
+// connection timeout recoverable. Previously a rejected clientPromise or
+// collectionPromise stayed cached forever inside a warm Vercel instance.
+// After one temporary Atlas/network timeout, every later score submission
+// could therefore fail until Vercel recycled that instance.
 async function getCollection() {
   const MONGODB_URI = getMongoUri();
   if (!MONGODB_URI) throw new Error('MONGODB_URI is not configured');
+
   if (!clientPromise) {
-    const client = new MongoClient(MONGODB_URI, { maxPoolSize: 10, serverSelectionTimeoutMS: 8000, connectTimeoutMS: 8000, socketTimeoutMS: 10000 });
-    clientPromise = client.connect();
+    const client = new MongoClient(MONGODB_URI, {
+      maxPoolSize: 10,
+      minPoolSize: 0,
+      serverSelectionTimeoutMS: 15000,
+      connectTimeoutMS: 15000,
+      socketTimeoutMS: 30000,
+      maxIdleTimeMS: 30000,
+      retryReads: true,
+      retryWrites: true,
+      // Vercel serverless functions normally use IPv4; explicitly preferring
+      // it avoids stalls on deployments where IPv6 routing is unavailable.
+      family: 4
+    });
+
+    clientPromise = client.connect().catch(async (err) => {
+      clientPromise = null;
+      collectionPromise = null;
+      try { await client.close(); } catch {}
+      throw err;
+    });
   }
+
   if (!collectionPromise) {
-    collectionPromise = clientPromise.then(client => client.db(DB_NAME).collection(COLLECTION_NAME));
+    collectionPromise = clientPromise
+      .then(client => client.db(DB_NAME).collection(COLLECTION_NAME))
+      .catch(err => {
+        collectionPromise = null;
+        throw err;
+      });
   }
+
   return collectionPromise;
 }
 
@@ -229,7 +260,11 @@ export async function submitBlockPuzzleScoreFast(matchId, userId, score, linesCl
     duelId: session.duelId || null,
     tournamentId: session.tournamentId || null,
     userId: String(userId),
-    matchId: String(matchId)
+    matchId: String(matchId),
+    // The read above is already enough to answer a normal solo submission.
+    // Returning these snapshots avoids a second full app_state read at game end.
+    session: { ...session, status: session.status === 'PLAYING' ? 'SUBMITTED' : session.status, submittedAt: session.status === 'PLAYING' ? submittedAt : (session.submittedAt || submittedAt), gameEndedAt: session.status === 'PLAYING' ? submittedAt : (session.gameEndedAt || submittedAt), score: nScore, linesCleared: nLines, bestCombo: nCombo },
+    user
   };
 }
 
