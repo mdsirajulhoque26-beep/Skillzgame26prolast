@@ -194,6 +194,28 @@ export async function saveDbPartial(db, keys = []) {
 // the matching array element instead of loading/saving the entire application
 // state document. Settlement for multiplayer/tournament matches still uses the
 // existing locked flow for correctness.
+export async function reinforceBlockPuzzleScore(matchId, userId, score, linesCleared = 0, bestCombo = 0, submittedAt = null) {
+  const collection = await getCollection();
+  const nScore = Math.max(0, Math.floor(Number(score || 0)));
+  const nLines = Math.max(0, Math.floor(Number(linesCleared || 0)));
+  const nCombo = Math.max(0, Math.floor(Number(bestCombo || 0)));
+  const when = submittedAt || new Date().toISOString();
+  if (!Number.isFinite(nScore) || !Number.isFinite(nLines) || !Number.isFinite(nCombo)) return false;
+  const result = await collection.updateOne(
+    { _id: STATE_ID },
+    { $set: {
+      'data.blockPuzzleMatches.$[m].score': nScore,
+      'data.blockPuzzleMatches.$[m].linesCleared': nLines,
+      'data.blockPuzzleMatches.$[m].bestCombo': nCombo,
+      'data.blockPuzzleMatches.$[m].submittedAt': when,
+      'data.blockPuzzleMatches.$[m].gameEndedAt': when,
+      updatedAt: new Date()
+    } },
+    { arrayFilters: [{ 'm.id': String(matchId), 'm.userId': String(userId) }] }
+  );
+  return result.matchedCount === 1;
+}
+
 export async function submitBlockPuzzleScoreFast(matchId, userId, score, linesCleared = 0, bestCombo = 0) {
   const collection = await getCollection();
   // MongoDB does not allow $elemMatch projection on fields nested under

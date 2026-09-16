@@ -79,7 +79,7 @@ function stateFor(session, userId) {
     type: 'STATE', version: 1, matchId: session.id, duelId: session.duelId || null,
     serverTime: Date.now(), gameStartedAt: session.gameStartedAt || session.startsAt || null,
     remainingMs: Math.max(0, (Date.parse(session.gameStartedAt || session.startsAt || '') + BP_GAME_MS) - Date.now()),
-    self: mine, opponent: opp ? { ...opp, userId: opponentId } : null
+    self: { moveIndex: Number(mine.moveIndex || 0) }
   };
 }
 function broadcast(duelId, message) {
@@ -124,11 +124,7 @@ async function handleMessage(ws, session, user, msg) {
   const message = {
     type: 'MOVE_ACCEPTED',
     userId: user.id,
-    moveIndex: result.p.moveIndex - 1,
-    pointsEarned: result.scored.points,
-    linesCleared: result.placed.lines,
-    score: result.p.score,
-    moverState: { ...result.p, userId: user.id }
+    moveIndex: result.p.moveIndex - 1
   };
   broadcast(result.current.duelId, message);
 }

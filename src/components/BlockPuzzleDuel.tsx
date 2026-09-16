@@ -119,7 +119,6 @@ export const BlockPuzzleDuel: React.FC = () => {
   const [matchOutcome, setMatchOutcome] = useState<'WON' | 'LOST' | 'DRAW' | 'PENDING'>('WON');
   const [matchedOpponent, setMatchedOpponent] = useState<{ name: string; score: number; linesCleared?: number } | undefined>();
   const announcedWinMatchRef = useRef<string>('');
-  const [opponentLiveBoard, setOpponentLiveBoard] = useState<number[][]>(() => createEmptyBoard());
   const [liveConnected, setLiveConnected] = useState(false);
   const liveSocketRef = useRef<WebSocket | null>(null);
   const liveMoveIndexRef = useRef(0);
@@ -434,17 +433,11 @@ export const BlockPuzzleDuel: React.FC = () => {
         try {
           const msg = JSON.parse(event.data);
           if (msg.type === 'STATE') {
-            if (msg.opponent) {
-              setMatchedOpponent(prev => ({ ...(prev || { name: 'Opponent', score: 0 }), score: Number(msg.opponent.score || 0), linesCleared: Number(msg.opponent.linesCleared || 0) }));
-              setOpponentLiveBoard(normalizeLiveBoard(msg.opponent.board));
-            }
+            // V56: live opponent score/board is intentionally never exposed to the client.
+            // The socket remains available for authoritative move transport only.
             if (msg.self) liveMoveIndexRef.current = Number(msg.self.moveIndex || 0);
           } else if (msg.type === 'MOVE_ACCEPTED' && msg.userId !== user.id) {
-            const mover = msg.moverState;
-            if (mover) {
-              setMatchedOpponent(prev => ({ ...(prev || { name: 'Opponent', score: 0 }), score: Number(mover.score || msg.score || 0), linesCleared: Number(mover.linesCleared || msg.linesCleared || 0) }));
-              setOpponentLiveBoard(normalizeLiveBoard(mover.board));
-            }
+            // Do not read or render opponent score/board from live transport.
           }
         } catch {}
       };
@@ -466,11 +459,6 @@ export const BlockPuzzleDuel: React.FC = () => {
       setLiveConnected(false);
     };
   }, [gameMode, activeMatchId, matchedOpponent?.name, screenState, user?.id]);
-
-  function normalizeLiveBoard(value: any): number[][] {
-    if (!Array.isArray(value) || value.length !== BOARD_SIZE) return createEmptyBoard();
-    return value.map((row: any) => Array.isArray(row) && row.length === BOARD_SIZE ? row.map((v: any) => Number(v) > 0 ? 1 : 0) : Array(BOARD_SIZE).fill(0));
-  }
 
   const sendLiveMove = (matrix: number[][], row: number, col: number) => {
     const move = { type: 'MOVE', moveIndex: liveMoveIndexRef.current, matrix, row, col };
@@ -634,6 +622,11 @@ export const BlockPuzzleDuel: React.FC = () => {
 
   // Initialize 10x10 Match
   const initMatch = (mode: BlockGameMode, diff: PracticeDifficulty = 'normal', serverStartAt?: string, serverSeed?: number | null) => {
+    // V56: a paid match is initialized at most once for the same server match id.
+    // This prevents slow restore/poll responses from rebuilding the board mid-match.
+    if ((mode === 'duel' || mode === 'tournament') && activeMatchId && initializedMatchRef.current === String(activeMatchId) && screenStateRef.current === 'playing') {
+      return;
+    }
     // Paid duels use the server's shared seed; practice remains locally random.
     if ((mode === 'duel' || mode === 'tournament') && activeMatchId) {
       initializedMatchRef.current = String(activeMatchId);
@@ -659,7 +652,6 @@ export const BlockPuzzleDuel: React.FC = () => {
         : TOTAL_MATCH_TIME);
     setRemainingTime(initialRemaining);
     // Keep an already matched opponent visible when a paired match starts.
-    setOpponentLiveBoard(createEmptyBoard());
     liveMoveIndexRef.current = 0;
     pendingLiveMovesRef.current = [];
 
@@ -772,6 +764,9 @@ export const BlockPuzzleDuel: React.FC = () => {
     }
 
     const settled = serverSubmit.match;
+    // Refresh the server-backed pending/history list immediately after submit.
+    // The game result remains visible without waiting for the 5-second poll.
+    void refreshBlockPuzzleMatches();
     if (gameMode === 'tournament' || settled?.tournamentId) {
       const id = String(settled?.tournamentId || tournamentId || sessionStorage.getItem('skillz_tournament_id') || '');
       if (id) {
@@ -789,6 +784,9 @@ export const BlockPuzzleDuel: React.FC = () => {
       if (settled.opponent) setMatchedOpponent({ name: settled.opponent.name, score: Number(settled.opponent.score || 0), linesCleared: Number(settled.opponent.linesCleared || 0) });
       setScreenState('result');
     } else {
+      // Never show an opponent's in-progress/pending score. Final opponent score
+      // is only populated after the server has completed the duel.
+      setMatchedOpponent(undefined);
       setMatchOutcome('PENDING');
       setScreenState('result');
     }
@@ -1244,19 +1242,6 @@ export const BlockPuzzleDuel: React.FC = () => {
             onPause={() => setIsPaused(true)}
             onOpenRules={() => setShowRules(true)}
           />
-
-          {gameMode === 'duel' && matchedOpponent && (
-            <div className="w-full max-w-[390px] mx-auto flex items-center justify-between rounded-xl border border-cyan-500/30 bg-[#0b1028]/80 px-3 py-2">
-              <div>
-                <div className="text-[10px] uppercase tracking-widest text-cyan-300 font-black">LIVE OPPONENT</div>
-                <div className="text-xs font-black text-white">{matchedOpponent.name}</div>
-                <div className="text-[11px] text-amber-300 font-mono">{Number(matchedOpponent.score || 0).toLocaleString()} pts</div>
-              </div>
-              <div className={`text-[9px] font-black ${liveConnected ? 'text-emerald-400' : 'text-amber-400'}`}>
-                {liveConnected ? '● LIVE' : 'CONNECTING'}
-              </div>
-            </div>
-          )}
 
           {/* 10x10 Board Grid */}
           <div className="block-gameplay-board-slot flex-1 min-h-0 w-full flex items-center justify-center">

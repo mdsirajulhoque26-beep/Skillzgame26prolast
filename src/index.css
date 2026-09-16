@@ -74,23 +74,29 @@
   min-height: 0;
   overflow: hidden;
   width: 100%;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
+  height: min(92vw, 510px, calc(100dvh - 300px));
 }
 
 .block-board-shell {
-  width: 100%;
-  max-height: 100%;
+  width: min(100%, 510px, calc(100dvh - 300px));
+  height: min(100%, 510px, calc(100dvh - 300px));
+  max-height: none;
+  flex: 0 0 auto;
 }
 
 .block-board-frame {
   width: 100%;
-  max-height: 100%;
+  height: 100%;
+  max-height: none;
+  flex: 0 0 auto;
 }
 
 .block-puzzle-grid {
-  width: min(100%, 510px, calc(100dvh - 340px));
-  height: auto;
-  max-height: 100%;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 1 / 1;
+  max-height: none;
   flex: 0 0 auto;
 }
 
@@ -332,4 +338,12 @@
 @media (max-height: 620px) {
   .block-tray-reference { min-height: 78px; }
   .block-tray-reference-slot { min-height: 72px; }
+}
+
+/* V56: gameplay play box remains geometrically locked; removing live-opponent layout shifts. */
+.block-gameplay-board-slot,
+.block-board-shell,
+.block-board-frame,
+.block-puzzle-grid {
+  flex-shrink: 0;
 }

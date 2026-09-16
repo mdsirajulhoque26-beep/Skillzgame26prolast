@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import crypto from 'node:crypto';
-import { loadDb, loadHistoryDb, saveDb, saveDbPartial, submitBlockPuzzleScoreFast, pingDb, id, now, hashPassword, verifyPassword, publicUser, withDbLock } from './store.mjs';
+import { loadDb, loadHistoryDb, saveDb, saveDbPartial, submitBlockPuzzleScoreFast, reinforceBlockPuzzleScore, pingDb, id, now, hashPassword, verifyPassword, publicUser, withDbLock } from './store.mjs';
 
 const app = express();
 app.disable('x-powered-by');
@@ -327,7 +327,7 @@ function blockPuzzlePublicMatch(session, db) {
     ? group.find(m => String(m.userId) === String(session.opponentUserId))
     : group.find(m => String(m.userId) !== String(session.userId));
   const opponent = opponentSession ? (db.users || []).find(u => String(u.id) === String(opponentSession.userId)) : null;
-  const participants = group.map(m => ({ userId:m.userId, name:m.userName, score:m.score ?? null, status:m.status, submitted: Boolean(m.submittedAt) }));
+  const participants = group.map(m => ({ userId:m.userId, name:m.userName, score:(String(m.userId) === String(session.userId) || String(m.status).toUpperCase() === 'COMPLETED') ? (m.score ?? null) : null, status:m.status, submitted: Boolean(m.submittedAt) }));
   return {
     id: session.id, gameType: session.gameType || 'block_puzzle', duelId: session.duelId || null, tournamentId: session.tournamentId || null, userId: session.userId, userName: session.userName, playerCount: Number(session.playerCount || 2), playersJoined: participants.length, participants,
     entryFee: session.entryFee, prizeAmount: session.prizeAmount, prizeDistribution: Array.isArray(session.prizeDistribution) ? session.prizeDistribution : (session.prizeAmount ? [session.prizeAmount] : []), status: session.status,
@@ -337,7 +337,7 @@ function blockPuzzlePublicMatch(session, db) {
     gameStartedAt: session.gameStartedAt || null, submittedAt: session.submittedAt || null,
     paused: Boolean(session.pauseStartedAt || session.paused), pauseStartedAt: session.pauseStartedAt || null,
     score: session.score ?? null, linesCleared: session.linesCleared ?? 0, bestCombo: session.bestCombo ?? 0,
-    opponent: opponentSession ? { userId: opponentSession.userId, name: opponentSession.userName || opponent?.name || 'Opponent', score: opponentSession.score == null ? null : Number(opponentSession.score), linesCleared: Number(opponentSession.linesCleared || 0), bestCombo: Number(opponentSession.bestCombo || 0), status: opponentSession.status } : null,
+    opponent: opponentSession ? { userId: opponentSession.userId, name: opponentSession.userName || opponent?.name || 'Opponent', score: String(session.status).toUpperCase() === 'COMPLETED' ? (opponentSession.score == null ? null : Number(opponentSession.score)) : null, linesCleared: String(session.status).toUpperCase() === 'COMPLETED' ? Number(opponentSession.linesCleared || 0) : 0, bestCombo: String(session.status).toUpperCase() === 'COMPLETED' ? Number(opponentSession.bestCombo || 0) : 0, status: opponentSession.status } : null,
     outcome: session.outcome || null, winnerId: session.winnerId || null, settledAt: session.settledAt || null,
     refunded: Boolean(session.refunded)
   };
@@ -1425,6 +1425,15 @@ app.post('/api/block-puzzle/matches/:id/submit', async (req, res) => {
         if (session.duelId) await settleBlockPuzzleDuel(db, session.duelId);
         maybeAwardReferralBonus(db, session.userId);
         await saveDbPartial(db, ['blockPuzzleMatches', 'users', 'transactions', 'tournaments', 'tournamentEntries', 'referrals']);
+        // Re-apply the just-submitted score with an atomic field update. This
+        // protects the player's final score from a concurrent legacy full-state
+        // write that may have loaded the match before submission. Settlement/status
+        // changes above are preserved; only the player's score fields are reinforced.
+        await reinforceBlockPuzzleScore(req.params.id, payload.userId, score, linesCleared, bestCombo, fast.session.submittedAt);
+        session.score = score;
+        session.linesCleared = linesCleared;
+        session.bestCombo = bestCombo;
+        session.submittedAt = fast.session.submittedAt;
         return { match: blockPuzzlePublicMatch(session, db), user: db.users.find(u => u.id === payload.userId) };
       });
     } else {
