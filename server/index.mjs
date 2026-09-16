@@ -1285,7 +1285,7 @@ app.post('/api/block-puzzle/matches/:id/pause', auth, async (req, res) => {
   try {
     const result = await withDbLock(async () => {
       const db = await loadDb();
-      const user = (db.users || []).find(u => u.id === req.authUserId);
+      const user = req.user || (db.users || []).find(u => u.id === req.authUserId);
       if (!user || user.isBanned) throw Object.assign(new Error('Account unavailable'), { statusCode: 403 });
       req.user = user;
       req.db = db;

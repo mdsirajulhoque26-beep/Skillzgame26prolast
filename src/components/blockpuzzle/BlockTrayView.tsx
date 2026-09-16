@@ -24,13 +24,13 @@ export const BlockTrayView: React.FC<BlockTrayViewProps> = ({
     <div className="w-full max-w-[390px] mx-auto select-none">
       {/* 3 Slots Container */}
       <div className="bg-[#090e23] p-2.5 rounded-2xl border-2 border-[#1c2754] shadow-xl">
-        <div className="grid grid-cols-3 gap-2 min-h-[112px] items-center">
+        <div className="grid grid-cols-3 gap-2.5 min-h-[128px] items-center">
           {pieces.map((piece, idx) => {
             if (!piece) {
               return (
                 <div
                   key={`empty-slot-${idx}`}
-                  className="h-28 rounded-xl border border-dashed border-[#1a254d]/60 bg-[#050816]/40 flex items-center justify-center text-[10px] text-slate-600 font-medium select-none"
+                  className="h-32 rounded-xl border border-dashed border-[#1a254d]/60 bg-[#050816]/40 flex items-center justify-center text-[10px] text-slate-600 font-medium select-none"
                 >
                   Used
                 </div>
@@ -48,7 +48,7 @@ export const BlockTrayView: React.FC<BlockTrayViewProps> = ({
                 onPointerMove={onPiecePointerMove}
                 onPointerUp={onPiecePointerUp}
                 onPointerCancel={onPiecePointerCancel}
-                className={`h-28 rounded-xl border p-2 flex flex-col items-center justify-center transition-all duration-150 relative overflow-hidden active:scale-[0.98] touch-none cursor-grab active:cursor-grabbing select-none ${
+                className={`h-32 rounded-xl border p-2.5 flex flex-col items-center justify-center transition-all duration-150 relative overflow-hidden active:scale-[0.98] touch-none cursor-grab active:cursor-grabbing select-none ${
                   isSelected
                     ? 'bg-gradient-to-b from-indigo-900/90 to-purple-950/90 border-cyan-400 ring-2 ring-cyan-400/60 shadow-lg shadow-cyan-500/20 scale-105'
                     : canFit
