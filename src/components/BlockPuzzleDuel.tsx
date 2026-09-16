@@ -1243,10 +1243,16 @@ export const BlockPuzzleDuel: React.FC = () => {
               type="button"
               onClick={async () => {
                 if (isPaused) return;
-                if (!activeMatchId || gameMode === 'practice') { setIsPaused(true); return; }
-                const paused = await pauseBlockPuzzleMatch(activeMatchId);
-                if (!paused.success) { alert(paused.message); return; }
+                // Practice Mode pauses instantly; Pro Match does the same locally
+                // and synchronizes the server clock in the background.
                 setIsPaused(true);
+                if (!activeMatchId || gameMode === 'practice') return;
+                try {
+                  const paused = await pauseBlockPuzzleMatch(activeMatchId);
+                  if (!paused.success) setIsPaused(false);
+                } catch {
+                  setIsPaused(false);
+                }
               }}
               className="w-10 h-10 rounded-2xl bg-[#0f1738] hover:bg-[#15204d] border border-[#1d2b5c] flex items-center justify-center text-slate-300 hover:text-white shadow-lg active:scale-95 transition-transform"
               title="Pause Game"
@@ -1327,10 +1333,16 @@ export const BlockPuzzleDuel: React.FC = () => {
               <button
                 onClick={async () => {
                   if (!activeMatchId || gameMode === 'practice') { setIsPaused(false); return; }
-                  const resumed = await resumeBlockPuzzleMatch(activeMatchId);
-                  if (!resumed.success) { alert(resumed.message); return; }
-                  if (resumed.match?.gameStartedAt) setServerGameStartedAt(resumed.match.gameStartedAt);
+                  // Resume immediately like Practice Mode, then sync the server
+                  // deadline without showing an account error to the player.
                   setIsPaused(false);
+                  try {
+                    const resumed = await resumeBlockPuzzleMatch(activeMatchId);
+                    if (resumed.success && resumed.match?.gameStartedAt) setServerGameStartedAt(resumed.match.gameStartedAt);
+                    if (!resumed.success) setIsPaused(true);
+                  } catch {
+                    setIsPaused(true);
+                  }
                 }}
                 className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black text-sm uppercase rounded-xl flex items-center justify-center gap-2 active:scale-95"
               >

@@ -319,8 +319,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const data = await backendApi.startBlockPuzzleMatch(entryFee, prize, playerCount, gameType);
       applyApiUser(data.user);
-      const tx = await backendApi.transactions();
-      setTransactions(tx.transactions as Transaction[]);
+      // Do not block Pro Match startup on the separate transaction-history
+      // request. On a cold/serverless MongoDB connection that read can take
+      // several seconds (or hit a connection timeout), even though the paid
+      // match itself has already been created successfully. Refresh history
+      // in the background so the 3-second game countdown can start immediately.
+      backendApi.transactions()
+        .then(tx => setTransactions(tx.transactions as Transaction[]))
+        .catch(() => {});
       return { success: true, message: 'ম্যাচ শুরু হয়েছে!', matchId: String(data.match.id), gameStartedAt: data.match.gameStartedAt || null, startsAt: data.match.startsAt || data.match.gameStartedAt || null, gameSeed: Number(data.match.gameSeed) || null, playerCount: Number(data.match.playerCount || playerCount) };
     } catch (e: any) {
       return { success: false, message: e?.message || 'ম্যাচ শুরু করা যায়নি।' };

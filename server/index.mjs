@@ -1281,50 +1281,54 @@ app.get('/api/block-puzzle/matches/:id/status', auth, async (req, res) => {
   } catch (err) { res.status(503).json({ message: err?.message || 'Match status unavailable.' }); }
 });
 
-app.post('/api/block-puzzle/matches/:id/pause', auth, async (req, res) => {
+// Pro Match Pause/Resume mirrors Practice Mode locally: the UI pauses immediately,
+// while these endpoints only synchronize the server clock. They intentionally use
+// the signed session token directly instead of the full auth middleware so a stale
+// user snapshot cannot turn a valid active match into an 'Account unavailable' error.
+app.post('/api/block-puzzle/matches/:id/pause', async (req, res) => {
   try {
+    const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    const payload = readToken(token);
+    if (!payload?.userId) return res.status(401).json({ message: 'Unauthorized' });
     const result = await withDbLock(async () => {
       const db = await loadDb();
-      const user = req.user || (db.users || []).find(u => u.id === req.authUserId);
-      if (!user || user.isBanned) throw Object.assign(new Error('Account unavailable'), { statusCode: 403 });
-      req.user = user;
-      req.db = db;
-      const session = (db.blockPuzzleMatches || []).find(m => m.id === req.params.id && m.userId === user.id);
+      const session = (db.blockPuzzleMatches || []).find(m => m.id === req.params.id && m.userId === payload.userId);
       if (!session) throw Object.assign(new Error('Block Puzzle match not found.'), { statusCode: 404 });
-      if (!['PLAYING'].includes(session.status)) throw Object.assign(new Error('এই ম্যাচটি এখন Pause করা যাবে না।'), { statusCode: 409 });
-      if (session.pauseStartedAt) return { match: blockPuzzlePublicMatch(session, db), user: db.users.find(u => u.id === req.user.id) };
+      if (session.status !== 'PLAYING') throw Object.assign(new Error('এই ম্যাচটি এখন Pause করা যাবে না।'), { statusCode: 409 });
+      if (session.pauseStartedAt) return { match: blockPuzzlePublicMatch(session, db), user: db.users.find(u => u.id === payload.userId) || null };
       const startedMs = Date.parse(session.gameStartedAt || session.startsAt || session.createdAt || '');
       if (!Number.isFinite(startedMs) || startedMs + BP_GAME_MS <= Date.now()) throw Object.assign(new Error('ম্যাচের সময় শেষ হয়ে গেছে।'), { statusCode: 409 });
       session.pauseStartedAt = now();
       session.paused = true;
       await saveDb(db);
-      return { match: blockPuzzlePublicMatch(session, db), user: db.users.find(u => u.id === req.user.id) };
+      return { match: blockPuzzlePublicMatch(session, db), user: db.users.find(u => u.id === payload.userId) || null };
     });
-    res.json({ match: result.match, user: publicUser(result.user) });
+    res.json({ match: result.match, user: result.user ? publicUser(result.user) : null });
   } catch (err) { res.status(err.statusCode || 503).json({ message: err?.message || 'ম্যাচ Pause করা যায়নি।' }); }
 });
 
-app.post('/api/block-puzzle/matches/:id/resume', auth, async (req, res) => {
+app.post('/api/block-puzzle/matches/:id/resume', async (req, res) => {
   try {
+    const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+    const payload = readToken(token);
+    if (!payload?.userId) return res.status(401).json({ message: 'Unauthorized' });
     const result = await withDbLock(async () => {
       const db = await loadDb();
-      const session = (db.blockPuzzleMatches || []).find(m => m.id === req.params.id && m.userId === req.user.id);
+      const session = (db.blockPuzzleMatches || []).find(m => m.id === req.params.id && m.userId === payload.userId);
       if (!session) throw Object.assign(new Error('Block Puzzle match not found.'), { statusCode: 404 });
       if (session.status !== 'PLAYING') throw Object.assign(new Error('এই ম্যাচটি এখন Resume করা যাবে না।'), { statusCode: 409 });
-      if (!session.pauseStartedAt) return { match: blockPuzzlePublicMatch(session, db), user: db.users.find(u => u.id === req.user.id) };
+      if (!session.pauseStartedAt) return { match: blockPuzzlePublicMatch(session, db), user: db.users.find(u => u.id === payload.userId) || null };
       const pausedMs = Math.max(0, Date.now() - Date.parse(session.pauseStartedAt));
       const baseMs = Date.parse(session.gameStartedAt || session.startsAt || session.createdAt || '');
       if (!Number.isFinite(baseMs)) throw Object.assign(new Error('ম্যাচের সময় তথ্য পাওয়া যায়নি।'), { statusCode: 409 });
-      // Move the server deadline forward by the exact paused duration. The
-      // player therefore keeps the unused portion of the original 3 minutes.
       session.gameStartedAt = new Date(baseMs + pausedMs).toISOString();
       session.startsAt = session.gameStartedAt;
       session.pauseStartedAt = null;
       session.paused = false;
       await saveDb(db);
-      return { match: blockPuzzlePublicMatch(session, db), user: db.users.find(u => u.id === req.user.id) };
+      return { match: blockPuzzlePublicMatch(session, db), user: db.users.find(u => u.id === payload.userId) || null };
     });
-    res.json({ match: result.match, user: publicUser(result.user) });
+    res.json({ match: result.match, user: result.user ? publicUser(result.user) : null });
   } catch (err) { res.status(err.statusCode || 503).json({ message: err?.message || 'ম্যাচ Resume করা যায়নি।' }); }
 });
 
