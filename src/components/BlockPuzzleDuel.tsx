@@ -92,6 +92,8 @@ export const BlockPuzzleDuel: React.FC = () => {
   const freshProMatchRef = useRef<string>('');
   const initializedMatchRef = useRef<string>('');
   const countdownMatchRef = useRef<string>('');
+  const startDuelInProgressRef = useRef<boolean>(false);
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
 
   // Modals
@@ -213,6 +215,11 @@ export const BlockPuzzleDuel: React.FC = () => {
     let alive = true;
     try { const raw = sessionStorage.getItem('skillz_multiplayer_pro_config'); if (raw) setMultiplayerProConfig(JSON.parse(raw)); } catch {}
     const boot = async () => {
+      // Never let the initial restore request rehydrate an old match while a
+      // new Pro Match is being created. This request can be slow on mobile/
+      // serverless deployments and used to restart the board a few seconds
+      // after a fresh match began.
+      if (startDuelInProgressRef.current) return;
       const storedTournamentId = sessionStorage.getItem('skillz_tournament_id') || '';
       const storedMatchId = sessionStorage.getItem('skillz_tournament_match_id') || '';
       if (storedTournamentId && storedMatchId) {
@@ -503,6 +510,7 @@ export const BlockPuzzleDuel: React.FC = () => {
   // Start Entry Fee Duel Match
   const handleStartDuel = async (fee: number, winPrize: number) => {
     blockAudio.playClick();
+    startDuelInProgressRef.current = true;
     setEntryFee(fee);
     setPrize(winPrize);
     setGameMode('duel');
@@ -515,6 +523,7 @@ export const BlockPuzzleDuel: React.FC = () => {
 
     const cfg = multiplayerProConfig;
     const res = await startBlockPuzzleMatch(cfg ? Number(cfg.entryFee) : fee, cfg ? Number(cfg.prizeAmount) : winPrize, cfg ? Number(cfg.players) : 2);
+    startDuelInProgressRef.current = false;
     if (!res.success) {
       alert(res.message);
       setScreenState('lobby');
@@ -552,6 +561,10 @@ export const BlockPuzzleDuel: React.FC = () => {
 
   // 3-second Countdown before match
   const startCountdown = (mode: BlockGameMode, serverStartAt?: string, serverSeed?: number | null) => {
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
     const startMs = serverStartAt ? Date.parse(serverStartAt) : NaN;
     const secondsUntilStart = Number.isFinite(startMs) ? Math.max(0, Math.ceil((startMs - Date.now()) / 1000)) : 3;
     if (secondsUntilStart <= 0) {
@@ -569,9 +582,11 @@ export const BlockPuzzleDuel: React.FC = () => {
 
       if (count <= 0) {
         clearInterval(interval);
+        if (countdownIntervalRef.current === interval) countdownIntervalRef.current = null;
         initMatch(mode, difficulty, serverStartAt, serverSeed);
       }
     }, 1000);
+    countdownIntervalRef.current = interval;
   };
 
   // Initialize 10x10 Match
