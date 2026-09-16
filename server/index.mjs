@@ -1394,7 +1394,11 @@ app.post('/api/block-puzzle/matches/:id/submit', async (req, res) => {
     const score = Number(req.body?.score || 0);
     const linesCleared = Number(req.body?.linesCleared || 0);
     const bestCombo = Number(req.body?.bestCombo || 0);
-    const fast = await submitBlockPuzzleScoreFast(req.params.id, payload.userId, score, linesCleared, bestCombo);
+    // Serialize the score write with other Block Puzzle state writers. The fast
+    // Mongo update remains the critical operation, but putting it under the same
+    // lock prevents a concurrent stale app_state save from writing the player's
+    // freshly submitted score back to 0. This directly protects the V55 race case.
+    const fast = await withDbLock(async () => submitBlockPuzzleScoreFast(req.params.id, payload.userId, score, linesCleared, bestCombo));
     if (!fast.ok) return res.status(fast.statusCode || 503).json({ message: fast.message });
 
     // A normal solo/matchmaking submission is now complete after the atomic

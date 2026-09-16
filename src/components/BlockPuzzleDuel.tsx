@@ -100,6 +100,39 @@ export const BlockPuzzleDuel: React.FC = () => {
   const moveCountRef = useRef<number>(0);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Persist the live paid-match state so a React remount/tab restore cannot
+  // rebuild the board from zero and later submit a zero score. This is a client
+  // continuity layer only; the server remains authoritative for money/settlement.
+  const LIVE_SNAPSHOT_PREFIX = 'skillz_block_puzzle_live_';
+  const LIVE_SNAPSHOT_PENDING = 'skillz_block_puzzle_live_pending';
+  const LIVE_SNAPSHOT_MAX_AGE_MS = TOTAL_MATCH_TIME * 1000 + 30000;
+
+  const clearLiveSnapshot = useCallback((matchId?: string) => {
+    try {
+      sessionStorage.removeItem(LIVE_SNAPSHOT_PENDING);
+      if (matchId) sessionStorage.removeItem(`${LIVE_SNAPSHOT_PREFIX}${String(matchId)}`);
+    } catch {}
+  }, []);
+
+  const saveLiveSnapshot = useCallback((matchId: string, seed: number, state: any, currentBoard: number[][], currentPieces: (BlockShape | null)[], currentTrioIndex: number, currentRemainingTime: number) => {
+    try {
+      const payload = {
+        version: 1,
+        matchId: String(matchId || ''),
+        seed: Number(seed) || Date.now(),
+        savedAt: Date.now(),
+        board: currentBoard,
+        pieces: currentPieces,
+        trioIndex: Number(currentTrioIndex || 0),
+        remainingTime: Number(currentRemainingTime || 0),
+        playerState: state,
+      };
+      const raw = JSON.stringify(payload);
+      sessionStorage.setItem(`${LIVE_SNAPSHOT_PREFIX}${String(matchId || 'pending')}`, raw);
+      sessionStorage.setItem(LIVE_SNAPSHOT_PENDING, raw);
+    } catch {}
+  }, []);
+
 
   // Modals
   const [showPendingModal, setShowPendingModal] = useState<boolean>(false);
@@ -215,6 +248,15 @@ export const BlockPuzzleDuel: React.FC = () => {
   }, [screenState, gameMode, matchOutcome, activeMatchId]);
 
   const activePendingCount = pendingMatches.filter(m => m.status === 'PENDING').length;
+
+  // Save after every meaningful gameplay state change. This is deliberately
+  // sessionStorage (not the server) so it cannot interfere with score settlement.
+  useEffect(() => {
+    if (!['duel', 'tournament'].includes(gameMode) || screenState !== 'playing') return;
+    const id = String(activeMatchId || 'pending');
+    saveLiveSnapshot(id, matchSeed, playerState, board, pieces, trioIndex, remainingTime);
+  }, [gameMode, screenState, activeMatchId, matchSeed, playerState, board, pieces, trioIndex, remainingTime, saveLiveSnapshot]);
+
   useEffect(() => {
     let alive = true;
     try { const raw = sessionStorage.getItem('skillz_multiplayer_pro_config'); if (raw) setMultiplayerProConfig(JSON.parse(raw)); } catch {}
@@ -269,13 +311,45 @@ export const BlockPuzzleDuel: React.FC = () => {
         const startMs = Date.parse(startAt);
         const expired = Number.isFinite(startMs) && startMs + TOTAL_MATCH_TIME * 1000 <= Date.now();
         if (expired) {
+          clearLiveSnapshot(String(match.id));
           setActiveMatchId('');
           setMatchedOpponent(undefined);
           setMatchOutcome('PENDING');
           setScreenState('lobby');
           return;
         }
-        initMatch('duel', difficulty, startAt || undefined, Number(match.gameSeed) || null);
+        const matchId = String(match.id);
+        let restored = false;
+        try {
+          const raw = sessionStorage.getItem(`${LIVE_SNAPSHOT_PREFIX}${matchId}`) || sessionStorage.getItem(LIVE_SNAPSHOT_PENDING);
+          const snap = raw ? JSON.parse(raw) : null;
+          const age = snap?.savedAt ? Date.now() - Number(snap.savedAt) : Infinity;
+          const snapBoardOk = Array.isArray(snap?.board) && snap.board.length === BOARD_SIZE;
+          const snapPiecesOk = Array.isArray(snap?.pieces) && snap.pieces.length === 3;
+          if (snap && age >= 0 && age <= LIVE_SNAPSHOT_MAX_AGE_MS && snapBoardOk && snapPiecesOk) {
+            initializedMatchRef.current = matchId;
+            setMatchSeed(Number(snap.seed) || Number(match.gameSeed) || Date.now());
+            setTrioIndex(Number(snap.trioIndex || 0));
+            setBoard(snap.board);
+            setPieces(snap.pieces);
+            setSelectedPieceIndex(null);
+            setClearingRows([]);
+            setClearingCols([]);
+            setHoveredCell(null);
+            setDragPointer(null);
+            setIsOutOfMoves(false);
+            setIsPaused(Boolean(match.paused));
+            const liveStartMs = Date.parse(startAt);
+            const remaining = Number.isFinite(liveStartMs)
+              ? Math.max(0, Math.ceil((liveStartMs + TOTAL_MATCH_TIME * 1000 - Date.now()) / 1000))
+              : Number(snap.remainingTime || TOTAL_MATCH_TIME);
+            setRemainingTime(remaining);
+            setPlayerState({ ...(snap.playerState || {}), playerId: user?.id || snap.playerState?.playerId || 'player_1', name: user?.name || snap.playerState?.name || 'Player', remainingTime: remaining, connected: true, ready: true });
+            setScreenState('playing');
+            restored = true;
+          }
+        } catch {}
+        if (!restored) initMatch('duel', difficulty, startAt || undefined, Number(match.gameSeed) || null);
         if (match.opponent) setMatchedOpponent({ name: match.opponent.name, score: Number(match.opponent.score || 0), linesCleared: Number(match.opponent.linesCleared || 0) });
       } else {
         // Submitted/completed/refunded history belongs in Pending & History.
@@ -524,6 +598,7 @@ export const BlockPuzzleDuel: React.FC = () => {
     // MongoDB/network. The provisional seed is sent to the server so a fresh
     // match keeps the same deterministic board seed.
     const localSeed = Math.floor(Math.random() * 2147483646) + 1;
+    try { sessionStorage.setItem(LIVE_SNAPSHOT_PENDING, JSON.stringify({ version: 1, matchId: '', seed: localSeed, savedAt: Date.now() })); } catch {}
     setMatchSeed(localSeed);
     initMatch('duel', difficulty, undefined, localSeed);
 
@@ -542,6 +617,7 @@ export const BlockPuzzleDuel: React.FC = () => {
       if (!res?.success) {
         proStartFailedRef.current = true;
         if (screenStateRef.current === 'playing' || screenStateRef.current === 'submit') {
+          clearLiveSnapshot();
           alert(res?.message || 'ম্যাচ শুরু করা যায়নি।');
           setScreenState('lobby');
         }
@@ -551,11 +627,16 @@ export const BlockPuzzleDuel: React.FC = () => {
       const createdMatchId = String(createdMatch?.id || res.matchId || '');
       if (!createdMatchId) {
         proStartFailedRef.current = true;
+        clearLiveSnapshot();
         alert('ম্যাচ আইডি পাওয়া যায়নি।');
         setScreenState('lobby');
         return;
       }
       setActiveMatchId(createdMatchId);
+      try {
+        const pending = sessionStorage.getItem(LIVE_SNAPSHOT_PENDING);
+        if (pending) sessionStorage.setItem(`${LIVE_SNAPSHOT_PREFIX}${createdMatchId}`, pending);
+      } catch {}
       refreshBlockPuzzleMatches().catch(() => {});
       const createdStart = createdMatch?.gameStartedAt || createdMatch?.startsAt || res.gameStartedAt || res.startsAt || null;
       setServerGameStartedAt(createdStart);
@@ -574,6 +655,7 @@ export const BlockPuzzleDuel: React.FC = () => {
       startDuelInProgressRef.current = false;
       proStartFailedRef.current = true;
       if (screenStateRef.current === 'playing' || screenStateRef.current === 'submit') {
+        clearLiveSnapshot();
         alert(e?.message || 'ম্যাচ শুরু করা যায়নি।');
         setScreenState('lobby');
       }
@@ -764,6 +846,7 @@ export const BlockPuzzleDuel: React.FC = () => {
     }
 
     const settled = serverSubmit.match;
+    clearLiveSnapshot(submitMatchId);
     // Refresh the server-backed pending/history list immediately after submit.
     // The game result remains visible without waiting for the 5-second poll.
     void refreshBlockPuzzleMatches();
@@ -1123,6 +1206,7 @@ export const BlockPuzzleDuel: React.FC = () => {
               onClick={async () => {
                 const refunded = await refundBlockPuzzleMatch(activeMatchId, entryFee, 'Player cancelled matchmaking');
                 if (!refunded.success) { alert(refunded.message); return; }
+                clearLiveSnapshot(activeMatchId);
                 setActiveMatchId('');
                 setScreenState('lobby');
               }}
@@ -1285,6 +1369,7 @@ export const BlockPuzzleDuel: React.FC = () => {
                   const refunded = await refundBlockPuzzleMatch(activeMatchId, entryFee, 'Player exited the game');
                   if (!refunded.success) { alert(refunded.message); return; }
                 }
+                clearLiveSnapshot(activeMatchId);
                 setActiveMatchId('');
                 setIsPaused(false);
                 setScreenState('lobby');
