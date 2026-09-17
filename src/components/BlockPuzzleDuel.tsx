@@ -93,6 +93,7 @@ export const BlockPuzzleDuel: React.FC = () => {
   // Without this guard, a slow boot request can finish after the user clicks Pro Match
   // and re-run initMatch(), which looks like the game randomly restarted.
   const freshProMatchRef = useRef<string>('');
+  const tournamentImmediateRef = useRef<boolean>(false);
   const initializedMatchRef = useRef<string>('');
   const countdownMatchRef = useRef<string>('');
   const startDuelInProgressRef = useRef<boolean>(false);
@@ -262,8 +263,24 @@ export const BlockPuzzleDuel: React.FC = () => {
       if (startDuelInProgressRef.current) return;
       const storedTournamentId = sessionStorage.getItem('skillz_tournament_id') || '';
       const storedMatchId = sessionStorage.getItem('skillz_tournament_match_id') || '';
+      const immediateTournament = sessionStorage.getItem('skillz_tournament_immediate') === '1';
       if (storedTournamentId) {
         let tournamentMatchId = storedMatchId;
+
+        // Tournament Play must open the board immediately. The server match is
+        // attached in the background; do not wait for Mongo/lock latency here.
+        if (immediateTournament && !tournamentImmediateRef.current) {
+          tournamentImmediateRef.current = true;
+          sessionStorage.removeItem('skillz_tournament_immediate');
+          const provisionalFee = Number(sessionStorage.getItem('skillz_tournament_entry_fee') || 0);
+          if (provisionalFee > 0) setEntryFee(provisionalFee);
+          setTournamentId(storedTournamentId);
+          setGameMode('tournament');
+          setActiveMatchId('');
+          setPrize(0);
+          setServerGameStartedAt(null);
+          initMatch('tournament', difficulty, undefined, Date.now());
+        }
 
         // Home opens this screen immediately after Join is clicked.
         // Give the backend a short window to create the paid tournament session.
@@ -290,9 +307,16 @@ export const BlockPuzzleDuel: React.FC = () => {
           setEntryFee(Number(match.entryFee || 0));
           setPrize(0);
           setServerGameStartedAt(match.gameStartedAt || match.startsAt || null);
-          setMatchSeed(Number(match.gameSeed) || Date.now());
-          if (match.status === 'PLAYING') initMatch('tournament', difficulty, match.gameStartedAt || match.startsAt || undefined, Number(match.gameSeed) || null);
-          else if (match.status === 'COMPLETED' || match.status === 'SUBMITTED') await openTournamentRankList(storedTournamentId);
+          if (!tournamentImmediateRef.current) {
+            setMatchSeed(Number(match.gameSeed) || Date.now());
+          }
+          if (match.status === 'PLAYING') {
+            if (!tournamentImmediateRef.current) {
+              initMatch('tournament', difficulty, match.gameStartedAt || match.startsAt || undefined, Number(match.gameSeed) || null);
+            }
+          } else if (match.status === 'COMPLETED' || match.status === 'SUBMITTED') {
+            await openTournamentRankList(storedTournamentId);
+          }
           return;
         }
       }

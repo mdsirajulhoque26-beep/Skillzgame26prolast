@@ -62,11 +62,18 @@ export const HomeScreen: React.FC = () => {
     // newly-created tournament match from the server as soon as it exists.
     sessionStorage.setItem('skillz_tournament_id', String(t.id));
     sessionStorage.removeItem('skillz_tournament_match_id');
+    sessionStorage.setItem('skillz_tournament_immediate', '1');
+    sessionStorage.setItem('skillz_tournament_entry_fee', String(Number(t.entryFee || 0)));
     setCurrentTab('block_puzzle');
     try {
       const data = await backendApi.joinTournament(t.id);
       sessionStorage.setItem('skillz_tournament_match_id', String(data.match?.id || ''));
-    } catch (e:any) { alert(e?.message || 'Tournament-এ Join করা যায়নি।'); }
+    } catch (e:any) {
+      sessionStorage.removeItem('skillz_tournament_immediate');
+      sessionStorage.removeItem('skillz_tournament_match_id');
+      alert(e?.message || 'Tournament-এ Join করা যায়নি।');
+      setCurrentTab('home');
+    }
     finally { setJoiningTournament(''); }
   };
 
