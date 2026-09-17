@@ -698,7 +698,7 @@ app.post('/api/tournaments/:id/join', async (req,res) => {
   try {
     const token=(req.headers.authorization||"").replace(/^Bearer\s+/i,""); const payload=readToken(token); if(!payload?.userId)return res.status(401).json({message:"Unauthorized"});
     const result=await withDbLock(async()=>{
-      const db=await loadDb(); const t=(db.tournaments||[]).find(x=>x.id===req.params.id);
+      const db=await loadDb(); const liveUser=(db.users||[]).find(u=>u.id===payload.userId); if(!liveUser||liveUser.isBanned)throw Object.assign(new Error("Account unavailable"),{statusCode:403}); req.user=liveUser; const t=(db.tournaments||[]).find(x=>x.id===req.params.id);
       if(!t)throw Object.assign(new Error('Tournament পাওয়া যায়নি।'),{statusCode:404});
       if(tournamentHasExpired(t)) { await finalizeTournamentInternal(db,t); await saveDb(db); throw Object.assign(new Error('Tournament-এর নির্ধারিত সময় শেষ হয়ে গেছে।'),{statusCode:400}); }
       if(t.status!=='ACTIVE')throw Object.assign(new Error('Tournament এখন আর Active নেই।'),{statusCode:400});
