@@ -716,7 +716,7 @@ app.post('/api/tournaments/:id/join', auth, async (req,res) => {
       req.user.gamingBalance=money(req.user.gamingBalance-t.entryFee); req.user.matchesPlayed=Number(req.user.matchesPlayed||0)+1; db.users=db.users.map(u=>u.id===req.user.id?req.user:u); db.blockPuzzleMatches=[session,...(db.blockPuzzleMatches||[])];
       entry.attempts=Number(entry.attempts||0)+1; entry.lastMatchId=session.id; entry.entryFee=Number(t.entryFee||0);
       t.registrationClosed=db.tournamentEntries.filter(e=>e.tournamentId===t.id).length>=Number(t.maxPlayers); t.updatedAt=now();
-      db.transactions.unshift(makeTransaction(req.user.id,'match_loss',-t.entryFee,'Tournament Entry',`${t.name} • Entry #${entry.entryNumber} • Attempt #${entry.attempts}`,'match',{matchId:session.id,tournamentId:t.id,tournamentEntryId:entry.id,gameType:'block_puzzle_tournament'})); await saveDb(db); return {t,session,db,charged:true};
+      db.transactions.unshift(makeTransaction(req.user.id,'match_loss',-t.entryFee,'Tournament Entry',`${t.name} • Entry #${entry.entryNumber} • Attempt #${entry.attempts}`,'match',{matchId:session.id,tournamentId:t.id,tournamentEntryId:entry.id,gameType:'block_puzzle_tournament'})); await saveDbPartial(db,['users','tournaments','tournamentEntries','blockPuzzleMatches','transactions']); return {t,session,db,charged:true};
     });
     res.status(201).json({tournament:publicTournament(result.db,result.t,req.user.id),match:blockPuzzlePublicMatch(result.session,result.db),user:publicUser(result.db.users.find(u=>u.id===req.user.id)),charged:result.charged});
   } catch(err){res.status(err.statusCode||503).json({message:err?.message||'Tournament Join করা যায়নি।'});}
