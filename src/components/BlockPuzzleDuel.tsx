@@ -582,6 +582,7 @@ export const BlockPuzzleDuel: React.FC = () => {
   const handleStartDuel = (fee: number, winPrize: number) => {
     blockAudio.playClick();
     startDuelInProgressRef.current = true;
+    freshProMatchRef.current = 'starting';
     proStartFailedRef.current = false;
     moveCountRef.current = 0;
     setEntryFee(fee);
@@ -615,6 +616,7 @@ export const BlockPuzzleDuel: React.FC = () => {
     void startPromise.then((res: any) => {
       startDuelInProgressRef.current = false;
       if (!res?.success) {
+        freshProMatchRef.current = '';
         proStartFailedRef.current = true;
         if (screenStateRef.current === 'playing' || screenStateRef.current === 'submit') {
           clearLiveSnapshot();
@@ -626,6 +628,7 @@ export const BlockPuzzleDuel: React.FC = () => {
       const createdMatch = res.match || {};
       const createdMatchId = String(createdMatch?.id || res.matchId || '');
       if (!createdMatchId) {
+        freshProMatchRef.current = '';
         proStartFailedRef.current = true;
         clearLiveSnapshot();
         alert('ম্যাচ আইডি পাওয়া যায়নি।');
@@ -633,6 +636,7 @@ export const BlockPuzzleDuel: React.FC = () => {
         return;
       }
       setActiveMatchId(createdMatchId);
+      freshProMatchRef.current = createdMatchId;
       try {
         const pending = sessionStorage.getItem(LIVE_SNAPSHOT_PENDING);
         if (pending) sessionStorage.setItem(`${LIVE_SNAPSHOT_PREFIX}${createdMatchId}`, pending);
@@ -653,6 +657,7 @@ export const BlockPuzzleDuel: React.FC = () => {
       }
     }).catch((e: any) => {
       startDuelInProgressRef.current = false;
+      freshProMatchRef.current = '';
       proStartFailedRef.current = true;
       if (screenStateRef.current === 'playing' || screenStateRef.current === 'submit') {
         clearLiveSnapshot();

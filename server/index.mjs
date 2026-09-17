@@ -1247,6 +1247,7 @@ app.get('/api/pending-games', auth, async (req, res) => {
         score: Number(m.score || 0), linesCleared: Number(m.linesCleared || 0), bestCombo: Number(m.bestCombo || 0),
         opponent, createdAt: m.createdAt || null, submittedAt: m.submittedAt || null, settledAt: m.settledAt || null,
         matchId: String(m.id), tournamentId: m.tournamentId || null,
+        tournamentStatus: tournament?.status || null,
       });
     }
 

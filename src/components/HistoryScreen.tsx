@@ -83,16 +83,37 @@ export const HistoryScreen: React.FC = () => {
   }, []);
 
   const completed = useMemo(() => {
-    return items
-      .filter((m) => {
+    const tournamentGroups = new Map<string, any>();
+    const regular: any[] = [];
+
+    for (const m of items) {
+      const isTournament = getCategory(m) === 'TOURNAMENT';
+
+      if (!isTournament) {
         const status = String(m?.status || '').toUpperCase();
-        // SUBMITTED is still waiting for the opponent and belongs in Pending & Match History.
-        // Only terminal/settled records belong in the completed History screen.
-        return ['COMPLETED', 'FINISHED', 'REFUNDED'].includes(status) || Boolean(getOutcome(m));
-      })
+        if (['COMPLETED', 'FINISHED', 'REFUNDED'].includes(status) || Boolean(getOutcome(m))) {
+          regular.push(m);
+        }
+        continue;
+      }
+
+      if (String(m?.tournamentStatus || '').toUpperCase() != 'ENDED') continue;
+      if (String(m?.tournamentStatus || '').toUpperCase() != 'ENDED') continue;
+      const tournamentKey = String(m?.tournamentId || m?.id || '');
+      if (!tournamentKey) continue;
+
+      const existing = tournamentGroups.get(tournamentKey);
+      if (!existing || Number(m?.score || 0) > Number(existing?.score || 0)) {
+        tournamentGroups.set(tournamentKey, m);
+      } else if (m?.tournamentStatus === 'ENDED' && existing?.tournamentStatus !== 'ENDED') {
+        tournamentGroups.set(tournamentKey, { ...existing, tournamentStatus: 'ENDED' });
+      }
+    }
+
+    return [...regular, ...Array.from(tournamentGroups.values())]
       .sort((a, b) => {
-        const da = Date.parse(a?.completedAt || a?.updatedAt || a?.createdAt || '') || 0;
-        const db = Date.parse(b?.completedAt || b?.updatedAt || b?.createdAt || '') || 0;
+        const da = Date.parse(a?.completedAt || a?.settledAt || a?.updatedAt || a?.createdAt || '') || 0;
+        const db = Date.parse(b?.completedAt || b?.settledAt || b?.updatedAt || b?.createdAt || '') || 0;
         return db - da;
       });
   }, [items]);
@@ -209,7 +230,17 @@ export const HistoryScreen: React.FC = () => {
                     </div>
                   </div>
                   <span className={`shrink-0 rounded-lg px-2 py-1 text-[9px] font-black ${win ? 'bg-emerald-400/15 text-emerald-300' : loss ? 'bg-red-400/15 text-red-300' : draw ? 'bg-amber-400/15 text-amber-300' : 'bg-slate-400/10 text-slate-300'}`}>
-                    {win ? 'WON' : loss ? 'LOST' : draw ? 'DRAW' : refunded ? 'REFUNDED' : 'COMPLETED'}
+                    {win
+                      ? 'WON'
+                      : loss
+                        ? 'LOST'
+                        : draw
+                          ? 'DRAW'
+                          : refunded
+                            ? 'REFUNDED'
+                            : getCategory(m) === 'TOURNAMENT' && String(m?.tournamentStatus || '').toUpperCase() !== 'ENDED'
+                              ? 'IN PROGRESS'
+                              : 'COMPLETED'}
                   </span>
                 </div>
 
