@@ -694,8 +694,9 @@ app.delete('/api/admin/tournaments/:id', auth, admin, async (req,res) => {
   req.db.tournaments=(req.db.tournaments||[]).filter(x=>x.id!==t.id); req.db.tournamentEntries=(req.db.tournamentEntries||[]).filter(x=>x.tournamentId!==t.id); await saveDb(req.db); res.json({ok:true});
 });
 
-app.post('/api/tournaments/:id/join', auth, async (req,res) => {
+app.post('/api/tournaments/:id/join', async (req,res) => {
   try {
+    const token=(req.headers.authorization||"").replace(/^Bearer\s+/i,""); const payload=readToken(token); if(!payload?.userId)return res.status(401).json({message:"Unauthorized"});
     const result=await withDbLock(async()=>{
       const db=await loadDb(); const t=(db.tournaments||[]).find(x=>x.id===req.params.id);
       if(!t)throw Object.assign(new Error('Tournament পাওয়া যায়নি।'),{statusCode:404});
