@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import crypto from 'node:crypto';
+import { waitUntil } from '@vercel/functions';
 import { loadDb, loadHistoryDb, saveDb, saveDbPartial, submitBlockPuzzleScoreFast, reinforceBlockPuzzleScore, pingDb, id, now, hashPassword, verifyPassword, publicUser, withDbLock } from './store.mjs';
 
 const app = express();
@@ -1406,7 +1407,7 @@ app.post('/api/block-puzzle/matches/:id/submit', async (req, res) => {
     // and payout logic, but only runs when it is actually required.
     let result;
     if (fast.needsSettlement) {
-      result = await withDbLock(async () => {
+      const settlementPromise = withDbLock(async () => {
         const db = await loadDb();
         const session = (db.blockPuzzleMatches || []).find(m => m.id === req.params.id && m.userId === payload.userId);
         if (!session) throw Object.assign(new Error('Block Puzzle match not found.'), { statusCode: 404 });
@@ -1440,6 +1441,24 @@ app.post('/api/block-puzzle/matches/:id/submit', async (req, res) => {
         session.submittedAt = fast.session.submittedAt;
         return { match: blockPuzzlePublicMatch(session, db), user: db.users.find(u => u.id === payload.userId) };
       });
+
+      // Tournament score/status is already written atomically above.
+      // Do not make the player wait for tournament settlement/payout preparation.
+      if (fast.tournamentId) {
+        waitUntil(
+          settlementPromise.catch(err => {
+            console.error('Tournament settlement failed:', err);
+          })
+        );
+
+        res.json({
+          match: blockPuzzlePublicMatch(fast.session, { users: [fast.user] }),
+          user: publicUser(fast.user)
+        });
+        return;
+      }
+
+      result = await settlementPromise;
     } else {
       // Solo submission is already fully written by submitBlockPuzzleScoreFast().
       // Do not perform another full MongoDB app_state read just to build the response.

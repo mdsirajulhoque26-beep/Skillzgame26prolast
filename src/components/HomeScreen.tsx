@@ -58,11 +58,14 @@ export const HomeScreen: React.FC = () => {
   const joinTournament = async (t:any) => {
     if (joiningTournament) return;
     setJoiningTournament(t.id);
+    // Enter Block Puzzle immediately. The game screen will pick up the
+    // newly-created tournament match from the server as soon as it exists.
+    sessionStorage.setItem('skillz_tournament_id', String(t.id));
+    sessionStorage.removeItem('skillz_tournament_match_id');
+    setCurrentTab('block_puzzle');
     try {
       const data = await backendApi.joinTournament(t.id);
       sessionStorage.setItem('skillz_tournament_match_id', String(data.match?.id || ''));
-      sessionStorage.setItem('skillz_tournament_id', String(t.id));
-      setCurrentTab('block_puzzle');
     } catch (e:any) { alert(e?.message || 'Tournament-এ Join করা যায়নি।'); }
     finally { setJoiningTournament(''); }
   };

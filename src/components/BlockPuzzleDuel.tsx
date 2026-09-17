@@ -262,8 +262,26 @@ export const BlockPuzzleDuel: React.FC = () => {
       if (startDuelInProgressRef.current) return;
       const storedTournamentId = sessionStorage.getItem('skillz_tournament_id') || '';
       const storedMatchId = sessionStorage.getItem('skillz_tournament_match_id') || '';
-      if (storedTournamentId && storedMatchId) {
-        const match = await getBlockPuzzleMatchStatus(storedMatchId);
+      if (storedTournamentId) {
+        let tournamentMatchId = storedMatchId;
+
+        // Home opens this screen immediately after Join is clicked.
+        // Give the backend a short window to create the paid tournament session.
+        if (!tournamentMatchId) {
+          for (let attempt = 0; attempt < 20 && alive && !tournamentMatchId; attempt++) {
+            const fresh = await getActiveBlockPuzzleMatch();
+            if (fresh?.tournamentId === storedTournamentId) {
+              tournamentMatchId = String(fresh.id);
+              sessionStorage.setItem('skillz_tournament_match_id', tournamentMatchId);
+              break;
+            }
+            await new Promise(resolve => window.setTimeout(resolve, 250));
+          }
+        }
+
+        if (!tournamentMatchId) return;
+
+        const match = await getBlockPuzzleMatchStatus(tournamentMatchId);
         if (!alive) return;
         if (match?.tournamentId === storedTournamentId) {
           setTournamentId(storedTournamentId);
