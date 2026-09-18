@@ -451,3 +451,26 @@
     max-height: 50px !important;
   }
 }
+
+/* V58: keep the 10x10 play grid square */
+.block-board-shell {
+  width: min(100%, 510px) !important;
+  height: min(100%, 510px) !important;
+  aspect-ratio: 1 / 1 !important;
+}
+
+.block-puzzle-grid {
+  width: 100% !important;
+  height: 100% !important;
+  aspect-ratio: 1 / 1 !important;
+}
+
+/* Lighter navy empty placement cells */
+.block-3d-board-cell {
+  background: #1a2a4a !important;
+  border-color: #30456f !important;
+  box-shadow:
+    inset 2px 2px 0 rgba(255,255,255,.06),
+    inset -2px -2px 0 rgba(0,0,0,.16),
+    0 2px 4px rgba(0,0,0,.20) !important;
+}

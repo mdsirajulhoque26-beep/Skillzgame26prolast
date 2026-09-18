@@ -326,7 +326,10 @@ export const BlockPuzzleDuel: React.FC = () => {
       if (screenStateRef.current !== 'lobby' || startDuelInProgressRef.current) return;
 
       const match = await getActiveBlockPuzzleMatch();
-      if (!alive || !match) return;
+
+      // Never let an old restore response overwrite a newly-started game.
+      if (!alive || screenStateRef.current !== 'lobby' || startDuelInProgressRef.current) return;
+      if (!match) return;
       // If the user has already started a fresh Pro Match while boot was waiting,
       // never restore the older active-match response over the new game.
       if (freshProMatchRef.current && String(match.id) !== freshProMatchRef.current) return;
