@@ -1666,6 +1666,61 @@ app.delete('/api/matches/:id', auth, admin, async (req, res) => {
 app.get('/api/deposit-requests', auth, admin, (req, res) => res.json({ depositRequests: req.db.depositRequests || [] }));
 app.get('/api/withdraw-requests', auth, admin, (req, res) => res.json({ withdrawRequests: req.db.withdrawRequests || [] }));
 app.get('/api/result-submissions', auth, admin, (req, res) => res.json({ resultSubmissions: req.db.resultSubmissions || [] }));
+
+app.delete('/api/admin/block-puzzle/results/user/:userId', auth, admin, async (req, res) => {
+  const targetUserId = String(req.params.userId || '');
+
+  if (!targetUserId) {
+    return res.status(400).json({ message: 'User ID required.' });
+  }
+
+  try {
+    const result = await withDbLock(async () => {
+      const db = await loadDb();
+
+      const beforeMatches = Array.isArray(db.blockPuzzleMatches) ? db.blockPuzzleMatches.length : 0;
+      const beforeResults = Array.isArray(db.resultSubmissions) ? db.resultSubmissions.length : 0;
+      const beforeEntries = Array.isArray(db.tournamentEntries) ? db.tournamentEntries.length : 0;
+
+      db.blockPuzzleMatches = (db.blockPuzzleMatches || []).filter(
+        x => String(x.userId) !== targetUserId
+      );
+
+      db.resultSubmissions = (db.resultSubmissions || []).filter(
+        x => String(x.userId) !== targetUserId
+      );
+
+      db.tournamentEntries = (db.tournamentEntries || []).filter(
+        x => String(x.userId) !== targetUserId
+      );
+
+      const deleted = {
+        matches: beforeMatches - db.blockPuzzleMatches.length,
+        resultSubmissions: beforeResults - db.resultSubmissions.length,
+        tournamentEntries: beforeEntries - db.tournamentEntries.length
+      };
+
+      await saveDbPartial(db, [
+        'blockPuzzleMatches',
+        'resultSubmissions',
+        'tournamentEntries'
+      ]);
+
+      return deleted;
+    });
+
+    res.json({
+      ok: true,
+      userId: targetUserId,
+      deleted: result
+    });
+  } catch (err) {
+    console.error('Block Game result delete error:', err);
+    res.status(err?.statusCode || 503).json({
+      message: err?.message || 'Block Game result delete করা যায়নি।'
+    });
+  }
+});
 app.get('/api/my-requests', auth, (req, res) => res.json({
   depositRequests: (req.db.depositRequests || []).filter(x => x.userId === req.user.id),
   withdrawRequests: (req.db.withdrawRequests || []).filter(x => x.userId === req.user.id),

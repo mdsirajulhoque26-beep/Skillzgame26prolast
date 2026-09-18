@@ -54,6 +54,7 @@ export const AdminPanel: React.FC = () => {
     resultSubmissions,
     approveResultSubmission,
     rejectResultSubmission,
+    deleteAllBlockPuzzleResultsForUser,
     registeredUsers,
     refreshUsers,
     adjustUserBalance,
@@ -1091,6 +1092,98 @@ export const AdminPanel: React.FC = () => {
           </div>
         )}
 
+        {activeAdminTab === 'results' && (
+          <div className="space-y-4">
+            <div className="bg-[#121935] p-4 rounded-2xl border border-indigo-900/60">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-bold text-white flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                    <span>Block Game Result</span>
+                  </h2>
+                  <p className="text-xs text-slate-400 mt-1">
+                    ইউজার অনুযায়ী Match ও Tournament-এর সব Block Game Result মুছে ফেলুন।
+                  </p>
+                </div>
+                <span className="bg-indigo-900/60 text-indigo-300 border border-indigo-700/50 text-xs font-bold px-3 py-1 rounded-full">
+                  মোট ইউজার: {new Set(resultSubmissions.map(s => String(s.userId))).size}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {Array.from(
+                new Map(
+                  resultSubmissions.map(sub => [
+                    String(sub.userId),
+                    {
+                      userId: String(sub.userId),
+                      userName: sub.userName || 'Unknown User',
+                      userPhone: sub.userPhone || '',
+                      count: resultSubmissions.filter(
+                        x => String(x.userId) === String(sub.userId)
+                      ).length
+                    }
+                  ])
+                ).values()
+              ).map(user => (
+                <div
+                  key={user.userId}
+                  className="bg-[#121935] border border-indigo-900/60 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-white text-sm">
+                        {user.userName}
+                      </span>
+                      {user.userPhone && (
+                        <span className="text-[11px] text-slate-400 font-mono">
+                          ({user.userPhone})
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-xs text-slate-400 mt-1">
+                      Block Game Result: <b className="text-amber-400">{user.count}</b> টি
+                    </p>
+
+                    <p className="text-[10px] text-slate-600 font-mono mt-0.5">
+                      User ID: {user.userId}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const confirmed = window.confirm(
+                        'এই ইউজারের সব Block Game Result মুছে ফেলতে চান? Match এবং Tournament-এর Block Game data-ও মুছে যাবে। এই কাজটি ফেরত নেওয়া যাবে না।'
+                      );
+
+                      if (!confirmed) return;
+
+                      const response = await deleteAllBlockPuzzleResultsForUser(user.userId);
+
+                      if (!response.success) {
+                        window.alert(response.message);
+                      }
+                    }}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-red-600/90 hover:bg-red-600 text-white text-xs font-extrabold transition-colors"
+                  >
+                    Delete All Result
+                  </button>
+                </div>
+              ))}
+
+              {resultSubmissions.length === 0 && (
+                <div className="bg-[#121935] border border-indigo-950 rounded-2xl p-8 text-center text-slate-500 text-sm">
+                  বর্তমানে কোনো Block Game Result নেই।
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* BLOCK_GAME_RESULT_USER_DELETE_UI */}
         {false && activeAdminTab === 'results' && (
           <div className="space-y-4">
             <div className="bg-[#121935] p-4 rounded-2xl border border-indigo-900/60 flex items-center justify-between">

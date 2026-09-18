@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Copy, Check, X, ShieldCheck, AlertCircle, PlusCircle } from 'lucide-react';
+import { Copy, Check, X, ShieldCheck, AlertCircle, PlusCircle, ArrowLeft } from 'lucide-react';
 
 export const AddMoneyModal: React.FC = () => {
   const { activeModal, closeModal, depositMoney, paymentSettings } = useApp();
@@ -178,6 +178,16 @@ export const AddMoneyModal: React.FC = () => {
 
         {showDepositForm && (
         <>
+        {/* Back to payment methods */}
+        <button
+          type="button"
+          onClick={() => setShowDepositForm(false)}
+          className="mb-3 flex items-center gap-1.5 text-xs font-bold text-slate-300 hover:text-white transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </button>
+
         {/* Selected method */}
         <div className="mb-3 flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2">
           <div>

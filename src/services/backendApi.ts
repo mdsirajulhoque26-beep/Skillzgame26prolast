@@ -50,6 +50,11 @@ export const backendApi = {
   depositRequests: () => request<{ depositRequests: any[] }>('/deposit-requests'),
   withdrawRequests: () => request<{ withdrawRequests: any[] }>('/withdraw-requests'),
   resultSubmissions: () => request<{ resultSubmissions: any[] }>('/result-submissions'),
+  deleteAllBlockPuzzleResultsForUser: (userId: string) =>
+    request<{ ok: boolean; userId: string; deleted: { matches: number; resultSubmissions: number; tournamentEntries: number } }>(
+      `/admin/block-puzzle/results/user/${encodeURIComponent(userId)}`,
+      { method: 'DELETE' }
+    ),
   myRequests: () => request<{ depositRequests: any[]; withdrawRequests: any[]; resultSubmissions: any[] }>('/my-requests'),
   createDeposit: (payload: any) => request<{ request: any }>('/deposit-requests', { method: 'POST', body: JSON.stringify(payload) }),
   updateDeposit: (id: string, status: string, reason = '') => request<{ request: any; user?: any }>(`/deposit-requests/${id}`, { method: 'PATCH', body: JSON.stringify({ status, reason }) }),

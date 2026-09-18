@@ -15,8 +15,23 @@ import { backendApi } from '../services/backendApi';
 
 // Keep the last successful Home payload across tab unmount/remounts so players
 // never see the full Home loading state just because they navigated away.
-let homeGamesCache: any[] | null = null;
-let homeTournamentsCache: any[] | null = null;
+let homeGamesCache: any[] | null = (() => {
+  try {
+    const raw = localStorage.getItem('skillz_home_games_cache');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+})();
+
+let homeTournamentsCache: any[] | null = (() => {
+  try {
+    const raw = localStorage.getItem('skillz_home_tournaments_cache');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+})();
 
 export const HomeScreen: React.FC = () => {
   const { setCurrentTab, openModal, paymentSettings } = useApp();
@@ -40,6 +55,12 @@ export const HomeScreen: React.FC = () => {
         const nextTournaments = td.tournaments || [];
         homeGamesCache = nextGames;
         homeTournamentsCache = nextTournaments;
+
+        try {
+          localStorage.setItem('skillz_home_games_cache', JSON.stringify(nextGames));
+          localStorage.setItem('skillz_home_tournaments_cache', JSON.stringify(nextTournaments));
+        } catch {}
+
         setGames(nextGames);
         setTournaments(nextTournaments);
       } catch (e) {

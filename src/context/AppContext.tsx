@@ -70,6 +70,7 @@ interface AppContextType {
   rejectWithdrawRequest: (requestId: string, reason?: string) => Promise<{ success: boolean; message: string }>;
   approveResultSubmission: (submissionId: string) => Promise<{ success: boolean; message: string }>;
   rejectResultSubmission: (submissionId: string, reason?: string) => Promise<{ success: boolean; message: string }>;
+  deleteAllBlockPuzzleResultsForUser: (userId: string) => Promise<{ success: boolean; message: string }>;
   adjustUserBalance: (userId: string, balanceType: 'gaming' | 'winning', amount: number, isAddition: boolean, note?: string, adjustmentId?: string) => Promise<boolean>;
   toggleUserBan: (userId: string) => Promise<boolean>;
   deleteUser: (userId: string) => Promise<{ success: boolean; message: string }>;
@@ -470,6 +471,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteDepositRequest = async (requestId:string) => { try { await backendApi.deleteDeposit(requestId); setDepositRequests(prev=>prev.filter(r=>r.id!==requestId)); return {success:true,message:'Deposit request delete হয়েছে।'}; } catch(e:any) { return {success:false,message:e?.message||'Deposit request delete করা যায়নি।'}; } };
   const deleteWithdrawRequest = async (requestId:string) => { try { await backendApi.deleteWithdraw(requestId); setWithdrawRequests(prev=>prev.filter(r=>r.id!==requestId)); return {success:true,message:'Withdrawal request delete হয়েছে।'}; } catch(e:any) { return {success:false,message:e?.message||'Withdrawal request delete করা যায়নি।'}; } };
   const approveResultSubmission = async (submissionId:string) => { try{const data=await backendApi.updateResult(submissionId,'APPROVED');setResultSubmissions(prev=>prev.map(s=>s.id===submissionId?data.submission as ResultSubmission:s));if(data.user)applyApiUser(data.user);await refreshMatches();return {success:true,message:`🎉 বিজয়ী ${data.submission.userName} কে ৳${data.submission.prizeAmount} টাকা উইনিং ব্যালেন্সে যোগ করে দেওয়া হয়েছে!`};}catch(e:any){return {success:false,message:e?.message||'রেজাল্ট অনুমোদন ব্যর্থ হয়েছে।'};} };
+  const deleteAllBlockPuzzleResultsForUser = async (userId:string) => {
+    try {
+      await backendApi.deleteAllBlockPuzzleResultsForUser(userId);
+
+      setResultSubmissions(prev =>
+        prev.filter(s => String(s.userId) !== String(userId))
+      );
+
+      return {
+        success: true,
+        message: 'এই ইউজারের সব Block Game Result মুছে দেওয়া হয়েছে।'
+      };
+    } catch (e:any) {
+      return {
+        success: false,
+        message: e?.message || 'Block Game Result delete করা যায়নি।'
+      };
+    }
+  };
+
   const rejectResultSubmission = async (submissionId:string,reason='ভুল বা নকল স্ক্রিনশট') => { try{const data=await backendApi.updateResult(submissionId,'REJECTED',reason);setResultSubmissions(prev=>prev.map(s=>s.id===submissionId?data.submission as ResultSubmission:s));return {success:true,message:'রেজাল্ট স্ক্রিনশট বাতিল করা হয়েছে।'};}catch(e:any){return {success:false,message:e?.message||'বাতিল করা যায়নি।'};} };
   const adjustUserBalance = async (userId:string,balanceType:'gaming'|'winning',amount:number,isAddition:boolean,note='Admin adjustment',adjustmentId='') => { try{const data=await backendApi.adjustBalance(userId,balanceType,amount,isAddition,note,adjustmentId);const mapped=mapApiUser(data.user);setRegisteredUsers(prev=>prev.map(u=>u.id===mapped.id?mapped:u));if(user.id===mapped.id)setUser(mapped);return true;}catch(e){console.error(e);return false;} };
   const toggleUserBan = async (userId:string) => { const target=registeredUsers.find(u=>u.id===userId);if(!target)return false;try{const data=await backendApi.toggleBan(userId,!Boolean(target.isBanned));const mapped=mapApiUser(data.user);setRegisteredUsers(prev=>prev.map(u=>u.id===mapped.id?mapped:u));return true;}catch(e){console.error(e);return false;} };
@@ -534,6 +555,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         rejectWithdrawRequest,
         approveResultSubmission,
         rejectResultSubmission,
+        deleteAllBlockPuzzleResultsForUser,
         adjustUserBalance,
         toggleUserBan,
         deleteUser,
