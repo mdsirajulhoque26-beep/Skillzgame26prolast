@@ -311,7 +311,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const joinMatch = async (matchId: string, ludoKingName: string): Promise<{success:boolean;message:string}> => { try { const data=await backendApi.joinMatch(matchId,ludoKingName.trim()); applyApiUser(data.user); setMatches(prev=>prev.map(m=>m.id===data.match.id?data.match as Match:m)); const tx=await backendApi.transactions(); setTransactions(tx.transactions as Transaction[]); return {success:true,message:data.match.roomCode?`ম্যাচ #${data.match.matchNo} তে জয়েন সম্পন্ন! রুম কোড: ${data.match.roomCode}`:`ম্যাচ #${data.match.matchNo} তে সফলভাবে জয়েন করেছেন! অন্য প্লেয়ারের অপেক্ষায়।`}; } catch(e:any){return {success:false,message:e?.message||'ম্যাচে জয়েন করা যায়নি।'};} };
 
   // User submits Deposit Request
-  const depositMoney = async (method: 'bKash'|'bKash Agent'|'Nagad'|'Rocket'|'Upay'|'Binance / USDT', amount:number, senderNumber:string, trxId:string):Promise<{success:boolean;message:string}> => { if(amount<=0||!senderNumber.trim()||!trxId.trim()) return {success:false,message:'সঠিক ডিপোজিট তথ্য দিন।'}; try{await backendApi.createDeposit({method,amount,senderNumber:senderNumber.trim(),trxId:trxId.trim().toUpperCase()}); const mine=await backendApi.myRequests(); setDepositRequests(mine.depositRequests as DepositRequest[]); const tx=await backendApi.transactions(); setTransactions(tx.transactions as Transaction[]); return {success:true,message:'ডিপোজিট রিকোয়েস্ট সফলভাবে জমা হয়েছে।'};}catch(e:any){console.error(e);return {success:false,message:e?.message||'ডিপোজিট রিকোয়েস্ট ব্যর্থ হয়েছে।'};} };
+  const depositMoney = async (method: 'bKash'|'bKash Agent'|'Nagad'|'Rocket'|'Upay'|'Binance / USDT', amount:number, senderNumber:string, trxId:string):Promise<{success:boolean;message:string}> => {
+    if(amount<=0||!senderNumber.trim()||!trxId.trim()) return {success:false,message:'সঠিক ডিপোজিট তথ্য দিন।'};
+    try {
+      const data = await backendApi.createDeposit({
+        method,
+        amount,
+        senderNumber: senderNumber.trim(),
+        trxId: trxId.trim().toUpperCase()
+      });
+
+      // The POST response is authoritative. Update the request list immediately
+      // instead of making the user wait for two extra database reads.
+      if (data.request) {
+        setDepositRequests(prev => [data.request as DepositRequest, ...prev.filter(r => r.id !== data.request.id)]);
+      }
+
+      // Refresh secondary data in the background only.
+      void backendApi.myRequests()
+        .then(mine => setDepositRequests(mine.depositRequests as DepositRequest[]))
+        .catch(() => {});
+
+      void backendApi.transactions()
+        .then(tx => setTransactions(tx.transactions as Transaction[]))
+        .catch(() => {});
+
+      return {success:true,message:'ডিপোজিট রিকোয়েস্ট সফলভাবে জমা হয়েছে।'};
+    } catch(e:any) {
+      console.error(e);
+      return {success:false,message:e?.message||'ডিপোজিট রিকোয়েস্ট ব্যর্থ হয়েছে।'};
+    }
+  };
 
   // User submits Withdraw Request
   const withdrawMoney = async (method:'bKash'|'bKash Agent'|'Nagad'|'Rocket'|'Binance / USDT', accountType:'Personal'|'Agent', accountNumber:string, amount:number):Promise<{success:boolean;message:string}> => { if(amount<100)return {success:false,message:'সর্বনিম্ন উইথড্রয়াল পরিমাণ ৳১০০ টাকা।'}; try{const data=await backendApi.createWithdraw({method,accountType,accountNumber:accountNumber.trim(),amount}); applyApiUser(data.user); const mine=await backendApi.myRequests(); setWithdrawRequests(mine.withdrawRequests as WithdrawRequest[]); const tx=await backendApi.transactions(); setTransactions(tx.transactions as Transaction[]); return {success:true,message:`৳${amount} টাকা উইথড্রয়াল রিকোয়েস্ট জমা হয়েছে। এডমিন যাচাই করে টাকা পাঠাবে।`};}catch(e:any){return {success:false,message:e?.message||'উইথড্র রিকোয়েস্ট ব্যর্থ হয়েছে।'};} };

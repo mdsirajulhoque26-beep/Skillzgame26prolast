@@ -11,6 +11,7 @@ export const AddMoneyModal: React.FC = () => {
   const [trxId, setTrxId] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
   const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [isSubmittingDeposit, setIsSubmittingDeposit] = useState<boolean>(false);
 
   const methods = [
     'bKash' as const,
@@ -93,14 +94,25 @@ export const AddMoneyModal: React.FC = () => {
       return;
     }
 
-    const result = await depositMoney(selectedMethod, amount, senderNumber, trxId);
-    if (result.success) {
-      setStatus({ ok: true, msg: `৳${amount} টাকা ডিপোজিট রিকোয়েস্ট হিসেবে জমা হয়েছে। এডমিন যাচাই করবেন।` });
-      setTimeout(() => {
-        closeModal();
-      }, 1500);
-    } else {
-      setStatus({ ok: false, msg: result.message });
+    setIsSubmittingDeposit(true);
+    setStatus({ ok: true, msg: 'ডিপোজিট রিকোয়েস্ট জমা হচ্ছে...' });
+
+    try {
+      const result = await depositMoney(selectedMethod, amount, senderNumber, trxId);
+
+      if (result.success) {
+        setStatus({ ok: true, msg: `৳${amount} টাকা ডিপোজিট রিকোয়েস্ট হিসেবে জমা হয়েছে। এডমিন যাচাই করবেন।` });
+        setTimeout(() => {
+          closeModal();
+          setIsSubmittingDeposit(false);
+        }, 700);
+      } else {
+        setStatus({ ok: false, msg: result.message });
+        setIsSubmittingDeposit(false);
+      }
+    } catch (error: any) {
+      setStatus({ ok: false, msg: error?.message || 'ডিপোজিট রিকোয়েস্ট ব্যর্থ হয়েছে।' });
+      setIsSubmittingDeposit(false);
     }
   };
 
@@ -301,9 +313,10 @@ export const AddMoneyModal: React.FC = () => {
           <button
             id="deposit-submit-btn"
             type="submit"
-            className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-sm rounded-xl shadow-lg shadow-amber-500/20 active:scale-95 transition-all mt-2 cursor-pointer"
+            disabled={isSubmittingDeposit}
+            className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:opacity-60 disabled:cursor-not-allowed text-slate-950 font-black text-sm rounded-xl shadow-lg shadow-amber-500/20 active:scale-95 transition-all mt-2 cursor-pointer"
           >
-            ডিপোজিট রিকোয়েস্ট নিশ্চিত করুন
+            {isSubmittingDeposit ? 'জমা হচ্ছে...' : 'ডিপোজিট রিকোয়েস্ট নিশ্চিত করুন'}
           </button>
         </form>
         </>
