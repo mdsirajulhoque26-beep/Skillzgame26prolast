@@ -320,6 +320,11 @@ export const BlockPuzzleDuel: React.FC = () => {
           return;
         }
       }
+      // Do not let the initial restore request overwrite a newly-started game.
+      // This is especially important for Practice Mode, where there is no
+      // server match id to identify the new session.
+      if (screenStateRef.current !== 'lobby' || startDuelInProgressRef.current) return;
+
       const match = await getActiveBlockPuzzleMatch();
       if (!alive || !match) return;
       // If the user has already started a fresh Pro Match while boot was waiting,
