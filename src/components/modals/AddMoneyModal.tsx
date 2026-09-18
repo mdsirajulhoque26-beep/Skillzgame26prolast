@@ -5,6 +5,7 @@ import { Copy, Check, X, ShieldCheck, AlertCircle, PlusCircle } from 'lucide-rea
 export const AddMoneyModal: React.FC = () => {
   const { activeModal, closeModal, depositMoney, paymentSettings } = useApp();
   const [selectedMethod, setSelectedMethod] = useState<'bKash' | 'bKash Agent' | 'Nagad' | 'Rocket' | 'Upay' | 'Binance / USDT'>('bKash');
+  const [showDepositForm, setShowDepositForm] = useState<boolean>(false);
   const [amount, setAmount] = useState<number>(100);
   const [senderNumber, setSenderNumber] = useState<string>('');
   const [trxId, setTrxId] = useState<string>('');
@@ -12,12 +13,12 @@ export const AddMoneyModal: React.FC = () => {
   const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
 
   const methods = [
-    ...(paymentSettings.depositBkashEnabled !== false && paymentSettings.bkash ? ['bKash' as const] : []),
-    ...(paymentSettings.depositBkashAgentEnabled !== false && paymentSettings.bkashAgent ? ['bKash Agent' as const] : []),
-    ...(paymentSettings.depositNagadEnabled !== false && paymentSettings.nagad ? ['Nagad' as const] : []),
-    ...(paymentSettings.depositRocketEnabled !== false && paymentSettings.rocket ? ['Rocket' as const] : []),
-    ...(paymentSettings.depositUpayEnabled !== false && paymentSettings.upay ? ['Upay' as const] : []),
-    ...(paymentSettings.depositBinanceUsdtEnabled !== false && paymentSettings.binanceUsdtEnabled !== false && paymentSettings.binanceUsdt ? ['Binance / USDT' as const] : []),
+    'bKash' as const,
+    'bKash Agent' as const,
+    'Nagad' as const,
+    'Rocket' as const,
+    'Upay' as const,
+    'Binance / USDT' as const,
   ];
 
   const methodMeta: Record<typeof methods[number], { logo: string; subtitle: string; logoClass: string }> = {
@@ -48,6 +49,17 @@ export const AddMoneyModal: React.FC = () => {
       case 'Rocket': return paymentSettings.rocket || 'Not configured';
       case 'Upay': return paymentSettings.upay || 'Not configured';
       case 'Binance / USDT': return paymentSettings.binanceUsdt || 'Not configured';
+    }
+  };
+
+  const isMethodAvailable = (method: typeof methods[number]) => {
+    switch (method) {
+      case 'bKash': return paymentSettings.depositBkashEnabled !== false && !!paymentSettings.bkash;
+      case 'bKash Agent': return paymentSettings.depositBkashAgentEnabled !== false && !!paymentSettings.bkashAgent;
+      case 'Nagad': return paymentSettings.depositNagadEnabled !== false && !!paymentSettings.nagad;
+      case 'Rocket': return paymentSettings.depositRocketEnabled !== false && !!paymentSettings.rocket;
+      case 'Upay': return paymentSettings.depositUpayEnabled !== false && !!paymentSettings.upay;
+      case 'Binance / USDT': return paymentSettings.depositBinanceUsdtEnabled !== false && paymentSettings.binanceUsdtEnabled !== false && !!paymentSettings.binanceUsdt;
     }
   };
 
@@ -128,7 +140,10 @@ export const AddMoneyModal: React.FC = () => {
                 key={m}
                 id={`deposit-method-${m.toLowerCase().replace(/\s+/g, '-')}`}
                 type="button"
-                onClick={() => setSelectedMethod(m)}
+                onClick={() => {
+                  setSelectedMethod(m);
+                  setShowDepositForm(true);
+                }}
                 className={`overflow-hidden rounded-xl border-2 transition-all text-left ${
                   selected
                     ? 'border-amber-400 ring-2 ring-amber-400/30 shadow-lg'
@@ -138,13 +153,32 @@ export const AddMoneyModal: React.FC = () => {
                 <div className="h-16 bg-white flex items-center justify-center">
                   <div className={`text-lg font-black tracking-tight ${meta.logoClass}`}>{meta.logo}</div>
                 </div>
-                <div className={`px-2 py-2 text-center ${selected ? 'bg-amber-500 text-slate-950' : 'bg-sky-600 text-white'}`}>
+                <div className={`px-2 py-2 text-center ${selected && showDepositForm ? 'bg-amber-500 text-slate-950' : 'bg-sky-600 text-white'}`}>
                   <div className="text-[11px] font-black leading-tight">{m}</div>
-                  <div className="text-[9px] font-semibold opacity-90 mt-0.5">{meta.subtitle}</div>
+                  <div className="text-[9px] font-semibold opacity-90 mt-0.5">
+                    {isMethodAvailable(m) ? meta.subtitle : 'Not configured'}
+                  </div>
                 </div>
               </button>
             );
           })}
+        </div>
+
+        {showDepositForm && (
+        <>
+        {/* Selected method */}
+        <div className="mb-3 flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2">
+          <div>
+            <div className="text-[10px] text-slate-400">SELECTED PAYMENT METHOD</div>
+            <div className="text-sm font-black text-amber-300">{selectedMethod}</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowDepositForm(false)}
+            className="text-[10px] font-bold text-slate-400 hover:text-white"
+          >
+            Change
+          </button>
         </div>
 
         {/* Account Number Copy Box */}
@@ -272,6 +306,8 @@ export const AddMoneyModal: React.FC = () => {
             ডিপোজিট রিকোয়েস্ট নিশ্চিত করুন
           </button>
         </form>
+        </>
+        )}
       </div>
     </div>
   );
