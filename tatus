@@ -1,0 +1,20 @@
+[1mdiff --git a/server/index.mjs b/server/index.mjs[m
+[1mindex 75aa3c4..9eb1c6b 100644[m
+[1m--- a/server/index.mjs[m
+[1m+++ b/server/index.mjs[m
+[36m@@ -1395,11 +1395,10 @@[m [mapp.post('/api/block-puzzle/matches/:id/submit', async (req, res) => {[m
+     const score = Number(req.body?.score || 0);[m
+     const linesCleared = Number(req.body?.linesCleared || 0);[m
+     const bestCombo = Number(req.body?.bestCombo || 0);[m
+[31m-    // Serialize the score write with other Block Puzzle state writers. The fast[m
+[31m-    // Mongo update remains the critical operation, but putting it under the same[m
+[31m-    // lock prevents a concurrent stale app_state save from writing the player's[m
+[31m-    // freshly submitted score back to 0. This directly protects the V55 race case.[m
+[31m-    const fast = await withDbLock(async () => submitBlockPuzzleScoreFast(req.params.id, payload.userId, score, linesCleared, bestCombo));[m
+[32m+[m[32m    // Submit is intentionally lock-free: the score/status write itself is[m
+[32m+[m[32m    // atomic in MongoDB. Do not make the player wait for the global Block Puzzle[m
+[32m+[m[32m    // lock or another player's settlement before receiving the Submit response.[m
+[32m+[m[32m    const fast = await submitBlockPuzzleScoreFast(req.params.id, payload.userId, score, linesCleared, bestCombo);[m
+     if (!fast.ok) return res.status(fast.statusCode || 503).json({ message: fast.message });[m
+ [m
+     // A normal solo/matchmaking submission is now complete after the atomic[m
