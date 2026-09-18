@@ -378,14 +378,23 @@ export const AdminPanel: React.FC = () => {
       return;
     }
 
+    const minDepositAmount = Number(settingsForm.minDepositAmount ?? 20);
     const maxDepositAmount = Number(settingsForm.maxDepositAmount ?? 0);
-    if (!Number.isFinite(maxDepositAmount) || maxDepositAmount < 0) {
-      showToast('Player-এর Maximum Deposit Amount ০ বা তার বেশি হতে হবে।', 'error');
+
+    if (
+      !Number.isFinite(minDepositAmount) ||
+      minDepositAmount < 0 ||
+      !Number.isFinite(maxDepositAmount) ||
+      maxDepositAmount < 0 ||
+      (maxDepositAmount > 0 && maxDepositAmount < minDepositAmount)
+    ) {
+      showToast('Minimum Deposit ০ বা তার বেশি হবে এবং Maximum Deposit, Minimum-এর চেয়ে কম হতে পারবে না।', 'error');
       return;
     }
 
     const payload = {
       ...settingsForm,
+      minDepositAmount,
       maxDepositAmount,
       proMatchFees,
       proMatchPrizes,
@@ -1630,24 +1639,47 @@ export const AdminPanel: React.FC = () => {
               <h3 className="text-sm font-bold text-cyan-400 border-b border-indigo-950 pb-2 pt-2">
                 Player Deposit Limit সেটিংস
               </h3>
-              <div className="bg-[#0b1022] border border-cyan-500/30 rounded-xl p-3 space-y-2">
-                <label className="block text-xs text-slate-300 font-semibold">
-                  Player সর্বোচ্চ Deposit Amount (৳)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={settingsForm.maxDepositAmount ?? 0}
-                  onChange={e => setSettingsForm({
-                    ...settingsForm,
-                    maxDepositAmount: e.target.value === '' ? 0 : Number(e.target.value)
-                  })}
-                  className="w-full bg-[#080d1b] border border-indigo-800 rounded-xl px-3 py-2.5 text-sm text-white font-mono"
-                  placeholder="0 = Unlimited"
-                />
+              <div className="bg-[#0b1022] border border-cyan-500/30 rounded-xl p-3 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-slate-300 font-semibold mb-1">
+                      Minimum Deposit Amount (৳)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={settingsForm.minDepositAmount ?? 20}
+                      onChange={e => setSettingsForm({
+                        ...settingsForm,
+                        minDepositAmount: e.target.value === '' ? 0 : Number(e.target.value)
+                      })}
+                      className="w-full bg-[#080d1b] border border-indigo-800 rounded-xl px-3 py-2.5 text-sm text-white font-mono"
+                      placeholder="20"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-300 font-semibold mb-1">
+                      Maximum Deposit Amount (৳)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={settingsForm.maxDepositAmount ?? 0}
+                      onChange={e => setSettingsForm({
+                        ...settingsForm,
+                        maxDepositAmount: e.target.value === '' ? 0 : Number(e.target.value)
+                      })}
+                      className="w-full bg-[#080d1b] border border-indigo-800 rounded-xl px-3 py-2.5 text-sm text-white font-mono"
+                      placeholder="0 = Unlimited"
+                    />
+                  </div>
+                </div>
+
                 <p className="text-[10px] text-slate-500">
-                  ০ দিলে কোনো Maximum Deposit Limit থাকবে না। ০-এর বেশি দিলে Player ওই পরিমাণের বেশি Deposit Request করতে পারবে না।
+                  Player এই Minimum থেকে Maximum-এর মধ্যে Deposit করতে পারবে। Maximum-এ ০ দিলে Unlimited থাকবে। উদাহরণ: Minimum ৳100, Maximum ৳5,000।
                 </p>
               </div>
 

@@ -19,6 +19,27 @@ export const AddMoneyModal: React.FC = () => {
     ...(paymentSettings.depositUpayEnabled !== false && paymentSettings.upay ? ['Upay' as const] : []),
     ...(paymentSettings.depositBinanceUsdtEnabled !== false && paymentSettings.binanceUsdtEnabled !== false && paymentSettings.binanceUsdt ? ['Binance / USDT' as const] : []),
   ];
+
+  const methodMeta: Record<typeof methods[number], { logo: string; subtitle: string; logoClass: string }> = {
+    'bKash': { logo: 'bKash', subtitle: 'Send Money', logoClass: 'text-pink-500' },
+    'bKash Agent': { logo: 'bKash', subtitle: 'Cash Out', logoClass: 'text-pink-500' },
+    'Nagad': { logo: 'Nagad', subtitle: 'Send Money', logoClass: 'text-orange-500' },
+    'Rocket': { logo: 'Rocket', subtitle: 'Send Money', logoClass: 'text-purple-500' },
+    'Upay': { logo: 'upay', subtitle: 'Send Money', logoClass: 'text-green-600' },
+    'Binance / USDT': { logo: '₮ USDT', subtitle: 'Wallet Transfer', logoClass: 'text-emerald-600' },
+  };
+
+  const minDepositAmount = Math.max(0, Number(paymentSettings.minDepositAmount ?? 20) || 0);
+  const maxDepositAmount = Math.max(0, Number(paymentSettings.maxDepositAmount ?? 0) || 0);
+  const effectiveMax = maxDepositAmount > 0 ? Math.max(maxDepositAmount, minDepositAmount) : 0;
+  const presetAmounts = Array.from(new Set([
+    minDepositAmount,
+    100,
+    250,
+    500,
+    1000,
+    ...(effectiveMax > 0 ? [effectiveMax] : []),
+  ].filter((n) => Number.isFinite(n) && n >= minDepositAmount && (effectiveMax === 0 || n <= effectiveMax)))).sort((a, b) => a - b).slice(0, 6);
   const getTargetNumber = () => {
     switch (selectedMethod) {
       case 'bKash': return paymentSettings.bkash || 'Not configured';
@@ -42,12 +63,11 @@ export const AddMoneyModal: React.FC = () => {
 
   const handleDepositSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (amount < 20) {
-      setStatus({ ok: false, msg: 'সর্বনিম্ন ডিপোজিট পরিমাণ ৳২০ টাকা।' });
+    if (amount < minDepositAmount) {
+      setStatus({ ok: false, msg: `সর্বনিম্ন ডিপোজিট পরিমাণ ৳${minDepositAmount.toFixed(2)}।` });
       return;
     }
 
-    const maxDepositAmount = Number(paymentSettings.maxDepositAmount ?? 0);
     if (maxDepositAmount > 0 && amount > maxDepositAmount) {
       setStatus({ ok: false, msg: `সর্বোচ্চ ডিপোজিট পরিমাণ ৳${maxDepositAmount.toFixed(2)}।` });
       return;
@@ -98,23 +118,33 @@ export const AddMoneyModal: React.FC = () => {
           </button>
         </div>
 
-        {/* Method Selector */}
-        <div className={`grid ${methods.length > 4 ? 'grid-cols-3' : 'grid-cols-4'} gap-1.5 mb-4`}>
-          {methods.map((m) => (
-            <button
-              key={m}
-              id={`deposit-method-${m.toLowerCase()}`}
-              type="button"
-              onClick={() => setSelectedMethod(m)}
-              className={`py-2 px-1 rounded-xl text-xs font-bold transition-all border ${
-                selectedMethod === m
-                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 border-amber-300 text-slate-950 shadow-md font-extrabold'
-                  : 'bg-[#0b1022] border-indigo-900 text-slate-300 hover:text-white'
-              }`}
-            >
-              {m}
-            </button>
-          ))}
+        {/* Method Selector — card layout like the reference screenshot */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          {methods.map((m) => {
+            const meta = methodMeta[m];
+            const selected = selectedMethod === m;
+            return (
+              <button
+                key={m}
+                id={`deposit-method-${m.toLowerCase().replace(/\s+/g, '-')}`}
+                type="button"
+                onClick={() => setSelectedMethod(m)}
+                className={`overflow-hidden rounded-xl border-2 transition-all text-left ${
+                  selected
+                    ? 'border-amber-400 ring-2 ring-amber-400/30 shadow-lg'
+                    : 'border-indigo-900/80 hover:border-sky-500/70'
+                }`}
+              >
+                <div className="h-16 bg-white flex items-center justify-center">
+                  <div className={`text-lg font-black tracking-tight ${meta.logoClass}`}>{meta.logo}</div>
+                </div>
+                <div className={`px-2 py-2 text-center ${selected ? 'bg-amber-500 text-slate-950' : 'bg-sky-600 text-white'}`}>
+                  <div className="text-[11px] font-black leading-tight">{m}</div>
+                  <div className="text-[9px] font-semibold opacity-90 mt-0.5">{meta.subtitle}</div>
+                </div>
+              </button>
+            );
+          })}
         </div>
 
         {/* Account Number Copy Box */}
@@ -153,13 +183,13 @@ export const AddMoneyModal: React.FC = () => {
           <label className="block text-xs font-bold text-slate-300 mb-1.5">
             ডিপোজিট পরিমাণ সিলেক্ট করুন (৳):
           </label>
-          <div className="grid grid-cols-5 gap-1">
-            {[50, 100, 250, 500, 1000].map((amt) => (
+          <div className="grid grid-cols-3 gap-1.5">
+            {presetAmounts.map((amt) => (
               <button
                 key={amt}
                 type="button"
                 onClick={() => setAmount(amt)}
-                className={`py-1.5 rounded-lg text-xs font-mono font-bold border transition-all ${
+                className={`py-2 rounded-lg text-xs font-mono font-bold border transition-all ${
                   amount === amt
                     ? 'bg-amber-400 border-amber-300 text-slate-950'
                     : 'bg-[#0d1326] border-indigo-950 text-slate-300 hover:text-white'
@@ -173,7 +203,7 @@ export const AddMoneyModal: React.FC = () => {
 
         {/* Deposit Form */}
         <div className="mb-3 rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-3 py-2 text-[10px] text-cyan-200">
-          সর্বনিম্ন: ৳20 • সর্বোচ্চ: {Number(paymentSettings.maxDepositAmount ?? 0) > 0 ? `৳${Number(paymentSettings.maxDepositAmount).toFixed(2)}` : 'Unlimited'}
+          সর্বনিম্ন: ৳{minDepositAmount.toFixed(2)} • সর্বোচ্চ: {maxDepositAmount > 0 ? `৳${maxDepositAmount.toFixed(2)}` : 'Unlimited'}
         </div>
         <form onSubmit={handleDepositSubmit} className="space-y-3">
           <div>
@@ -183,6 +213,9 @@ export const AddMoneyModal: React.FC = () => {
             <input
               id="deposit-amount-input"
               type="number"
+              min={minDepositAmount}
+              max={maxDepositAmount > 0 ? maxDepositAmount : undefined}
+              step="0.01"
               value={amount}
               onChange={(e) => setAmount(Number(e.target.value))}
               className="w-full px-3.5 py-2.5 bg-[#0b1022] border border-indigo-900 focus:border-amber-400 rounded-xl text-sm font-mono text-white focus:outline-none"

@@ -271,6 +271,7 @@ export interface PaymentSettings {
   referralBonusAmount?: number;
   referralMinDeposit?: number;
   referralRequireFirstProMatch?: boolean;
+  minDepositAmount?: number;
   maxDepositAmount?: number;
   bkashAgent?: string;
   binanceUsdt?: string;

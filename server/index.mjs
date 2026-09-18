@@ -1684,8 +1684,10 @@ app.post('/api/deposit-requests', auth, async (req, res) => {
   if (ps.depositRocketEnabled !== false && ps.rocket) allowedDepositMethods.push('Rocket');
   if (ps.depositUpayEnabled !== false && ps.upay) allowedDepositMethods.push('Upay');
   if (ps.depositBinanceUsdtEnabled !== false && ps.binanceUsdtEnabled !== false && ps.binanceUsdt) allowedDepositMethods.push('Binance / USDT');
+  const minDepositAmount = money(Math.max(0, Number(ps.minDepositAmount ?? 20) || 0));
   const maxDepositAmount = money(Math.max(0, Number(ps.maxDepositAmount) || 0));
   if (!Number.isFinite(amount) || amount <= 0 || !senderNumber || !trxId || !allowedDepositMethods.includes(method)) return res.status(400).json({ message: 'এই Deposit Payment Method বর্তমানে চালু নেই।' });
+  if (amount < minDepositAmount) return res.status(400).json({ message: `সর্বনিম্ন ডিপোজিট পরিমাণ ৳${minDepositAmount.toFixed(2)}।` });
   if (maxDepositAmount > 0 && amount > maxDepositAmount) return res.status(400).json({ message: `সর্বোচ্চ ডিপোজিট পরিমাণ ৳${maxDepositAmount.toFixed(2)}।` });
   try {
     const result = await withDbLock(async () => {
@@ -1986,11 +1988,21 @@ app.get('/api/settings', auth, (req, res) => res.json({ paymentSettings: req.db.
 app.patch('/api/settings', auth, admin, async (req, res) => {
   const b = req.body || {};
   const paymentPatch = {};
-  if (b.maxDepositAmount !== undefined) {
-    const maxDepositAmount = Number(b.maxDepositAmount);
-    if (!Number.isFinite(maxDepositAmount) || maxDepositAmount < 0) {
-      return res.status(400).json({ message: 'Player Maximum Deposit Amount ০ বা তার বেশি হতে হবে।' });
+  if (b.minDepositAmount !== undefined || b.maxDepositAmount !== undefined) {
+    const minDepositAmount = Number(b.minDepositAmount ?? req.db.paymentSettings?.minDepositAmount ?? 20);
+    const maxDepositAmount = Number(b.maxDepositAmount ?? req.db.paymentSettings?.maxDepositAmount ?? 0);
+
+    if (
+      !Number.isFinite(minDepositAmount) ||
+      minDepositAmount < 0 ||
+      !Number.isFinite(maxDepositAmount) ||
+      maxDepositAmount < 0 ||
+      (maxDepositAmount > 0 && maxDepositAmount < minDepositAmount)
+    ) {
+      return res.status(400).json({ message: 'Minimum Deposit ০ বা তার বেশি হবে এবং Maximum Deposit, Minimum-এর চেয়ে কম হতে পারবে না।' });
     }
+
+    paymentPatch.minDepositAmount = money(minDepositAmount);
     paymentPatch.maxDepositAmount = money(maxDepositAmount);
   }
   for (const key of ['bkash','bkashAgent','nagad','rocket','upay','binanceUsdt','bkashAgentEnabled','binanceUsdtEnabled','depositBkashEnabled','depositBkashAgentEnabled','depositNagadEnabled','depositRocketEnabled','depositUpayEnabled','depositBinanceUsdtEnabled','withdrawBkashEnabled','withdrawNagadEnabled','withdrawRocketEnabled','withdrawUpayEnabled','withdrawBinanceUsdtEnabled','whatsappSupport','telegramLink','marqueeNotice','popupNoticeTitle','popupNoticeText']) { if (b[key] !== undefined) paymentPatch[key] = typeof b[key] === 'string' ? safeText(b[key], 5000) : Boolean(b[key]); }
