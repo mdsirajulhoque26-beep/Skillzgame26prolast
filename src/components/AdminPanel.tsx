@@ -378,8 +378,15 @@ export const AdminPanel: React.FC = () => {
       return;
     }
 
+    const maxDepositAmount = Number(settingsForm.maxDepositAmount ?? 0);
+    if (!Number.isFinite(maxDepositAmount) || maxDepositAmount < 0) {
+      showToast('Player-এর Maximum Deposit Amount ০ বা তার বেশি হতে হবে।', 'error');
+      return;
+    }
+
     const payload = {
       ...settingsForm,
+      maxDepositAmount,
       proMatchFees,
       proMatchPrizes,
       multiplayerProMatches
@@ -1619,6 +1626,30 @@ export const AdminPanel: React.FC = () => {
                 ))}
               </div>
               <p className="text-[10px] text-slate-500">OFF করলে Player-এর Deposit screen এবং server—দুই জায়গাতেই ওই method বন্ধ থাকবে।</p>
+
+              <h3 className="text-sm font-bold text-cyan-400 border-b border-indigo-950 pb-2 pt-2">
+                Player Deposit Limit সেটিংস
+              </h3>
+              <div className="bg-[#0b1022] border border-cyan-500/30 rounded-xl p-3 space-y-2">
+                <label className="block text-xs text-slate-300 font-semibold">
+                  Player সর্বোচ্চ Deposit Amount (৳)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={settingsForm.maxDepositAmount ?? 0}
+                  onChange={e => setSettingsForm({
+                    ...settingsForm,
+                    maxDepositAmount: e.target.value === '' ? 0 : Number(e.target.value)
+                  })}
+                  className="w-full bg-[#080d1b] border border-indigo-800 rounded-xl px-3 py-2.5 text-sm text-white font-mono"
+                  placeholder="0 = Unlimited"
+                />
+                <p className="text-[10px] text-slate-500">
+                  ০ দিলে কোনো Maximum Deposit Limit থাকবে না। ০-এর বেশি দিলে Player ওই পরিমাণের বেশি Deposit Request করতে পারবে না।
+                </p>
+              </div>
 
               <h3 className="text-sm font-bold text-teal-400 border-b border-indigo-950 pb-2 pt-2">
                 Withdraw Payment Methods — ON / OFF (Personal)

@@ -1684,7 +1684,9 @@ app.post('/api/deposit-requests', auth, async (req, res) => {
   if (ps.depositRocketEnabled !== false && ps.rocket) allowedDepositMethods.push('Rocket');
   if (ps.depositUpayEnabled !== false && ps.upay) allowedDepositMethods.push('Upay');
   if (ps.depositBinanceUsdtEnabled !== false && ps.binanceUsdtEnabled !== false && ps.binanceUsdt) allowedDepositMethods.push('Binance / USDT');
+  const maxDepositAmount = money(Math.max(0, Number(ps.maxDepositAmount) || 0));
   if (!Number.isFinite(amount) || amount <= 0 || !senderNumber || !trxId || !allowedDepositMethods.includes(method)) return res.status(400).json({ message: 'এই Deposit Payment Method বর্তমানে চালু নেই।' });
+  if (maxDepositAmount > 0 && amount > maxDepositAmount) return res.status(400).json({ message: `সর্বোচ্চ ডিপোজিট পরিমাণ ৳${maxDepositAmount.toFixed(2)}।` });
   try {
     const result = await withDbLock(async () => {
       // Reload inside the lock so two simultaneous submissions cannot reuse one TrxID.
@@ -1984,6 +1986,13 @@ app.get('/api/settings', auth, (req, res) => res.json({ paymentSettings: req.db.
 app.patch('/api/settings', auth, admin, async (req, res) => {
   const b = req.body || {};
   const paymentPatch = {};
+  if (b.maxDepositAmount !== undefined) {
+    const maxDepositAmount = Number(b.maxDepositAmount);
+    if (!Number.isFinite(maxDepositAmount) || maxDepositAmount < 0) {
+      return res.status(400).json({ message: 'Player Maximum Deposit Amount ০ বা তার বেশি হতে হবে।' });
+    }
+    paymentPatch.maxDepositAmount = money(maxDepositAmount);
+  }
   for (const key of ['bkash','bkashAgent','nagad','rocket','upay','binanceUsdt','bkashAgentEnabled','binanceUsdtEnabled','depositBkashEnabled','depositBkashAgentEnabled','depositNagadEnabled','depositRocketEnabled','depositUpayEnabled','depositBinanceUsdtEnabled','withdrawBkashEnabled','withdrawNagadEnabled','withdrawRocketEnabled','withdrawUpayEnabled','withdrawBinanceUsdtEnabled','whatsappSupport','telegramLink','marqueeNotice','popupNoticeTitle','popupNoticeText']) { if (b[key] !== undefined) paymentPatch[key] = typeof b[key] === 'string' ? safeText(b[key], 5000) : Boolean(b[key]); }
     if (b.multiplayerProMatches !== undefined) {
     if (!Array.isArray(b.multiplayerProMatches)) return res.status(400).json({message:'Multiplayer Pro Match settings invalid.'});

@@ -46,6 +46,12 @@ export const AddMoneyModal: React.FC = () => {
       setStatus({ ok: false, msg: 'সর্বনিম্ন ডিপোজিট পরিমাণ ৳২০ টাকা।' });
       return;
     }
+
+    const maxDepositAmount = Number(paymentSettings.maxDepositAmount ?? 0);
+    if (maxDepositAmount > 0 && amount > maxDepositAmount) {
+      setStatus({ ok: false, msg: `সর্বোচ্চ ডিপোজিট পরিমাণ ৳${maxDepositAmount.toFixed(2)}।` });
+      return;
+    }
     if (!senderNumber || senderNumber.length < 10) {
       setStatus({ ok: false, msg: 'সঠিক সেন্ডার নম্বর লিখুন।' });
       return;
@@ -166,6 +172,9 @@ export const AddMoneyModal: React.FC = () => {
         </div>
 
         {/* Deposit Form */}
+        <div className="mb-3 rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-3 py-2 text-[10px] text-cyan-200">
+          সর্বনিম্ন: ৳20 • সর্বোচ্চ: {Number(paymentSettings.maxDepositAmount ?? 0) > 0 ? `৳${Number(paymentSettings.maxDepositAmount).toFixed(2)}` : 'Unlimited'}
+        </div>
         <form onSubmit={handleDepositSubmit} className="space-y-3">
           <div>
             <label className="block text-xs font-bold text-slate-300 mb-1">
