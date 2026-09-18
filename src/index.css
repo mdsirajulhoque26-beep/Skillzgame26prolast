@@ -465,8 +465,9 @@
   aspect-ratio: 1 / 1 !important;
 }
 
-/* Lighter navy empty placement cells */
-.block-3d-board-cell {
+/* Lighter navy empty placement cells only.
+   Occupied colored blocks keep their original colors. */
+.block-3d-board-cell:not(:has(> .absolute)) {
   background: #1a2a4a !important;
   border-color: #30456f !important;
   box-shadow:
