@@ -347,7 +347,43 @@ export const AdminPanel: React.FC = () => {
       return;
     }
 
-    const payload = { ...settingsForm, multiplayerProMatches };
+    const defaultProFees = [20, 30, 60, 120, 250, 500];
+    const defaultProPrizes = [35, 50, 100, 200, 420, 850];
+
+    const proMatchFees =
+      (Array.isArray(settingsForm.proMatchFees) && settingsForm.proMatchFees.length
+        ? settingsForm.proMatchFees
+        : defaultProFees).map((n:any) => Number(n));
+
+    const proMatchPrizes =
+      (Array.isArray(settingsForm.proMatchPrizes) && settingsForm.proMatchPrizes.length
+        ? settingsForm.proMatchPrizes
+        : defaultProPrizes).map((n:any) => Number(n));
+
+    if (proMatchFees.length < 1 || proMatchFees.length !== proMatchPrizes.length) {
+      showToast('Pro Match Entry Fee ও Payout-এর সংখ্যা সমান হতে হবে।', 'error');
+      return;
+    }
+
+    if (
+      proMatchFees.some((n:number) => !Number.isFinite(n) || n <= 0) ||
+      proMatchPrizes.some((n:number) => !Number.isFinite(n) || n <= 0)
+    ) {
+      showToast('প্রতিটি Entry Fee এবং Payout ০-এর বেশি হতে হবে।', 'error');
+      return;
+    }
+
+    if (new Set(proMatchFees.map((n:number) => n.toFixed(2))).size !== proMatchFees.length) {
+      showToast('একই Entry Fee একাধিকবার রাখা যাবে না।', 'error');
+      return;
+    }
+
+    const payload = {
+      ...settingsForm,
+      proMatchFees,
+      proMatchPrizes,
+      multiplayerProMatches
+    };
     setSettingsSaving(true);
     try {
       const ok = await updatePaymentSettings(payload);
@@ -1630,17 +1666,118 @@ export const AdminPanel: React.FC = () => {
               </div>
 
               <h3 className="text-sm font-bold text-amber-400 border-b border-indigo-950 pb-2 pt-2">
-                Pro Match Entry Fee সেটিংস
+                Pro Match Entry Fee + Payout সেটিংস
               </h3>
-              <div className="bg-[#0b1022] border border-indigo-900 rounded-xl p-3">
-                <p className="text-[10px] text-slate-500 mb-2">Pro Match-এর ৬টি Entry Fee আপনি এখান থেকে যেকোনো positive amount দিতে পারবেন। Prize payout আগের মতোই থাকবে।</p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {(settingsForm.proMatchFees || [20,30,60,120,250,500]).map((fee:number, i:number) => (
-                    <div key={i}>
-                      <label className="block text-[10px] text-slate-400 mb-1">Option #{i+1} Entry Fee ৳</label>
-                      <input type="number" min="0.01" step="0.01" value={fee} onChange={e => { const fees = [...(settingsForm.proMatchFees || [20,30,60,120,250,500])]; fees[i] = Number(e.target.value); setSettingsForm({...settingsForm, proMatchFees: fees}); }} className="w-full bg-[#080d1b] border border-indigo-800 rounded-xl px-3 py-2 text-xs text-white" />
-                    </div>
-                  ))}
+              <div className="bg-[#0b1022] border border-indigo-900 rounded-xl p-3 space-y-3">
+                <p className="text-[10px] text-slate-500">
+                  প্রয়োজন অনুযায়ী যতগুলো Entry Fee Option চান যোগ করুন। প্রতিটি Option-এর Payout/Prize আলাদাভাবে সেট করা যাবে। কোনো ৬টি Option-এর সীমা নেই।
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const fees = Array.isArray(settingsForm.proMatchFees)
+                      ? [...settingsForm.proMatchFees]
+                      : [20,30,60,120,250,500];
+
+                    const prizes = Array.isArray(settingsForm.proMatchPrizes)
+                      ? [...settingsForm.proMatchPrizes]
+                      : [35,50,100,200,420,850];
+
+                    fees.push(0);
+                    prizes.push(0);
+
+                    setSettingsForm({
+                      ...settingsForm,
+                      proMatchFees: fees,
+                      proMatchPrizes: prizes
+                    });
+                  }}
+                  className="w-full rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 font-black text-xs py-2.5"
+                >
+                  + Entry Fee Option যোগ করুন
+                </button>
+
+                <div className="space-y-2">
+                  {(Array.isArray(settingsForm.proMatchFees) && settingsForm.proMatchFees.length
+                    ? settingsForm.proMatchFees
+                    : [20,30,60,120,250,500]
+                  ).map((fee:number, i:number) => {
+                    const prizes =
+                      Array.isArray(settingsForm.proMatchPrizes) && settingsForm.proMatchPrizes.length
+                        ? settingsForm.proMatchPrizes
+                        : [35,50,100,200,420,850];
+
+                    return (
+                      <div
+                        key={i}
+                        className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end rounded-xl border border-indigo-900 bg-[#080d1b] p-2.5"
+                      >
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-1">
+                            Option #{i+1} Entry Fee ৳
+                          </label>
+                          <input
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={fee}
+                            onChange={e => {
+                              const fees = [
+                                ...(settingsForm.proMatchFees || [20,30,60,120,250,500])
+                              ];
+                              fees[i] = e.target.value === '' ? 0 : Number(e.target.value);
+                              setSettingsForm({...settingsForm, proMatchFees: fees});
+                            }}
+                            className="w-full bg-[#080d1b] border border-indigo-800 rounded-xl px-3 py-2 text-xs text-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] text-amber-300 mb-1">
+                            Payout / Prize ৳
+                          </label>
+                          <input
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={prizes[i] ?? 0}
+                            onChange={e => {
+                              const next = [...prizes];
+                              next[i] = e.target.value === '' ? 0 : Number(e.target.value);
+                              setSettingsForm({...settingsForm, proMatchPrizes: next});
+                            }}
+                            className="w-full bg-[#080d1b] border border-amber-900/60 rounded-xl px-3 py-2 text-xs text-white"
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const fees = [
+                              ...(settingsForm.proMatchFees || [20,30,60,120,250,500])
+                            ];
+                            const nextPrizes = [...prizes];
+
+                            fees.splice(i, 1);
+                            nextPrizes.splice(i, 1);
+
+                            setSettingsForm({
+                              ...settingsForm,
+                              proMatchFees: fees,
+                              proMatchPrizes: nextPrizes
+                            });
+                          }}
+                          disabled={
+                            (settingsForm.proMatchFees || [20,30,60,120,250,500]).length <= 1
+                          }
+                          className="rounded-xl border border-red-900/60 px-3 py-2 text-xs text-red-300 disabled:opacity-30"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

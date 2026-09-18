@@ -11,7 +11,7 @@ import {
   PaymentSettings 
 } from '../types';
 const initialUser: User = { id: '', name: '', phone: '', isAdmin: false, ludoKingName: '', gamingBalance: 0, winningBalance: 0, matchesPlayed: 0, totalWinnings: 0, referralCode: '', joinedAt: '' };
-const initialPaymentSettings: PaymentSettings = { bkash: '', bkashAgent: '', nagad: '', rocket: '', upay: '', binanceUsdt: '', bkashAgentEnabled: true, binanceUsdtEnabled: true, depositBkashEnabled: true, depositBkashAgentEnabled: true, depositNagadEnabled: true, depositRocketEnabled: true, depositUpayEnabled: true, depositBinanceUsdtEnabled: true, withdrawBkashEnabled: true, withdrawNagadEnabled: true, withdrawRocketEnabled: true, withdrawUpayEnabled: true, withdrawBinanceUsdtEnabled: true, whatsappSupport: '', telegramLink: '', marqueeNotice: '', popupNoticeTitle: '', popupNoticeText: '', proMatchFees: [20, 30, 60, 120, 250, 500], multiplayerProMatches: [{id:'mp_3',players:3,entryFee:20,prizeAmount:40,prizes:[40],active:false,showOnHome:true,displayOrder:1},{id:'mp_5',players:5,entryFee:30,prizeAmount:80,prizes:[80],active:false,showOnHome:true,displayOrder:2},{id:'mp_7',players:7,entryFee:60,prizeAmount:160,prizes:[160],active:false,showOnHome:true,displayOrder:3},{id:'mp_10',players:10,entryFee:120,prizeAmount:300,prizes:[300],active:false,showOnHome:true,displayOrder:4}] };
+const initialPaymentSettings: PaymentSettings = { bkash: '', bkashAgent: '', nagad: '', rocket: '', upay: '', binanceUsdt: '', bkashAgentEnabled: true, binanceUsdtEnabled: true, depositBkashEnabled: true, depositBkashAgentEnabled: true, depositNagadEnabled: true, depositRocketEnabled: true, depositUpayEnabled: true, depositBinanceUsdtEnabled: true, withdrawBkashEnabled: true, withdrawNagadEnabled: true, withdrawRocketEnabled: true, withdrawUpayEnabled: true, withdrawBinanceUsdtEnabled: true, whatsappSupport: '', telegramLink: '', marqueeNotice: '', popupNoticeTitle: '', popupNoticeText: '', proMatchFees: [20, 30, 60, 120, 250, 500], proMatchPrizes: [35, 50, 100, 200, 420, 850], multiplayerProMatches: [{id:'mp_3',players:3,entryFee:20,prizeAmount:40,prizes:[40],active:false,showOnHome:true,displayOrder:1},{id:'mp_5',players:5,entryFee:30,prizeAmount:80,prizes:[80],active:false,showOnHome:true,displayOrder:2},{id:'mp_7',players:7,entryFee:60,prizeAmount:160,prizes:[160],active:false,showOnHome:true,displayOrder:3},{id:'mp_10',players:10,entryFee:120,prizeAmount:300,prizes:[300],active:false,showOnHome:true,displayOrder:4}] };
 import confetti from 'canvas-confetti';
 import { backendApi } from '../services/backendApi';
 
@@ -148,21 +148,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     avatarUrl: apiUser.avatarUrl,
   });
 
+  const mergeStableById = (prev: any[], incoming: any[]) => {
+    const fresh = Array.isArray(incoming) ? incoming : [];
+    const byId = new Map(fresh.map(item => [String(item?.id), item]));
+
+    const next = prev
+      .filter(item => byId.has(String(item?.id)))
+      .map(item => byId.get(String(item?.id)));
+
+    const seen = new Set(next.map(item => String(item?.id)));
+
+    fresh.forEach(item => {
+      const key = String(item?.id);
+      if (!seen.has(key)) {
+        next.push(item);
+        seen.add(key);
+      }
+    });
+
+    return next;
+  };
+
   const applyApiUser = (apiUser: any) => {
     const mapped = mapApiUser(apiUser);
     setUser(mapped);
-    setRegisteredUsers(prev => [mapped, ...prev.filter(u => u.id !== mapped.id)]);
+
+    setRegisteredUsers(prev => {
+      const index = prev.findIndex(u => u.id === mapped.id);
+      if (index < 0) return [...prev, mapped];
+
+      const next = [...prev];
+      next[index] = mapped;
+      return next;
+    });
+
     return mapped;
   };
+
   const refreshUsers = async () => {
     try {
-      const [users, deps, wds, results, matchData] = await Promise.all([backendApi.users(), backendApi.depositRequests(), backendApi.withdrawRequests(), backendApi.resultSubmissions(), backendApi.matches()]);
-      setRegisteredUsers(users.users.map(mapApiUser));
-      setDepositRequests(deps.depositRequests as DepositRequest[]);
-      setWithdrawRequests(wds.withdrawRequests as WithdrawRequest[]);
-      setResultSubmissions(results.resultSubmissions as ResultSubmission[]);
+      const [users, deps, wds, results, matchData] = await Promise.all([
+        backendApi.users(),
+        backendApi.depositRequests(),
+        backendApi.withdrawRequests(),
+        backendApi.resultSubmissions(),
+        backendApi.matches()
+      ]);
+
+      setRegisteredUsers(prev => mergeStableById(prev, users.users.map(mapApiUser)));
+      setDepositRequests(prev => mergeStableById(prev, deps.depositRequests as DepositRequest[]));
+      setWithdrawRequests(prev => mergeStableById(prev, wds.withdrawRequests as WithdrawRequest[]));
+      setResultSubmissions(prev => mergeStableById(prev, results.resultSubmissions as ResultSubmission[]));
       setMatches(matchData.matches as Match[]);
-    } catch (error) { console.error('Failed to refresh admin data:', error); }
+    } catch (error) {
+      console.error('Failed to refresh admin data:', error);
+    }
   };
   const refreshBackendState = async (adminMode = Boolean(user.isAdmin)) => {
     const me = await backendApi.me();
@@ -171,8 +211,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setMatches(matchData.matches as Match[]); setTransactions(txData.transactions as Transaction[]); setPaymentSettings({ ...(settings.paymentSettings as PaymentSettings), referralEnabled: settings.referralSettings?.enabled, referralBonusAmount: settings.referralSettings?.bonusAmount, referralMinDeposit: settings.referralSettings?.minDeposit, referralRequireFirstProMatch: settings.referralSettings?.requireFirstProMatch });
     setDepositRequests(mine.depositRequests as DepositRequest[]); setWithdrawRequests(mine.withdrawRequests as WithdrawRequest[]); setResultSubmissions(mine.resultSubmissions as ResultSubmission[]);
     if (adminMode || meUser.isAdmin) {
-      const [users, deps, wds, results] = await Promise.all([backendApi.users(), backendApi.depositRequests(), backendApi.withdrawRequests(), backendApi.resultSubmissions()]);
-      setRegisteredUsers(users.users.map(mapApiUser)); setDepositRequests(deps.depositRequests as DepositRequest[]); setWithdrawRequests(wds.withdrawRequests as WithdrawRequest[]); setResultSubmissions(results.resultSubmissions as ResultSubmission[]);
+      const [users, deps, wds, results] = await Promise.all([
+        backendApi.users(),
+        backendApi.depositRequests(),
+        backendApi.withdrawRequests(),
+        backendApi.resultSubmissions()
+      ]);
+      setRegisteredUsers(prev => mergeStableById(prev, users.users.map(mapApiUser)));
+      setDepositRequests(prev => mergeStableById(prev, deps.depositRequests as DepositRequest[]));
+      setWithdrawRequests(prev => mergeStableById(prev, wds.withdrawRequests as WithdrawRequest[]));
+      setResultSubmissions(prev => mergeStableById(prev, results.resultSubmissions as ResultSubmission[]));
     }
   };
   useEffect(() => {

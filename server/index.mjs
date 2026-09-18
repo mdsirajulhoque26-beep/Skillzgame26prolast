@@ -289,7 +289,7 @@ const BP_GAME_MS = 3 * 60 * 1000;
 // the dedicated live server handles low-latency move/state messages.
 const BP_PROTOCOL_VERSION = 1;
 const DEFAULT_PRO_MATCH_FEES = [20, 30, 60, 120, 250, 500];
-const PRO_MATCH_PRIZES = [35, 50, 100, 200, 420, 850];
+const DEFAULT_PRO_MATCH_PRIZES = [35, 50, 100, 200, 420, 850];
 const DEFAULT_MULTIPLAYER_PRO_MATCHES = [
   {id:'mp_3', players:3, entryFee:20, prizes:[40], active:false, showOnHome:true, displayOrder:1},
   {id:'mp_5', players:5, entryFee:30, prizes:[80], active:false, showOnHome:true, displayOrder:2},
@@ -299,8 +299,23 @@ const DEFAULT_MULTIPLAYER_PRO_MATCHES = [
 const BLOCK_BOARD_SIZE = 10;
 function emptyBoard() { return Array.from({ length: BLOCK_BOARD_SIZE }, () => Array(BLOCK_BOARD_SIZE).fill(0)); }
 function proMatchFees(db) {
-  const fees = Array.isArray(db.paymentSettings?.proMatchFees) ? db.paymentSettings.proMatchFees.map(Number).filter(n => Number.isFinite(n) && n > 0) : [];
-  return fees.length === DEFAULT_PRO_MATCH_FEES.length ? fees : DEFAULT_PRO_MATCH_FEES;
+  const fees = Array.isArray(db.paymentSettings?.proMatchFees)
+    ? db.paymentSettings.proMatchFees.map(Number).filter(n => Number.isFinite(n) && n > 0)
+    : [];
+  return fees.length ? fees : DEFAULT_PRO_MATCH_FEES;
+}
+
+function proMatchPrizes(db, feeCount) {
+  const raw = Array.isArray(db.paymentSettings?.proMatchPrizes)
+    ? db.paymentSettings.proMatchPrizes.map(Number)
+    : [];
+
+  return Array.from({ length: feeCount }, (_, i) => {
+    const value = Number(raw[i]);
+    return Number.isFinite(value) && value > 0
+      ? value
+      : (DEFAULT_PRO_MATCH_PRIZES[i] || 0);
+  });
 }
 function multiplayerProMatchConfig(db, playerCount) {
   const rows = Array.isArray(db.paymentSettings?.multiplayerProMatches) ? db.paymentSettings.multiplayerProMatches : DEFAULT_MULTIPLAYER_PRO_MATCHES;
@@ -851,7 +866,8 @@ app.post('/api/block-puzzle/matches/start', async (req, res) => {
         prizeDistribution = prizeDistribution.slice(0, maxWinners);
         prizeAmount = prizeDistribution[0];
       } else {
-        prizeAmount = feeIndex >= 0 ? PRO_MATCH_PRIZES[feeIndex] : null;
+        const configuredPrizes = proMatchPrizes(db, configuredFees.length);
+        prizeAmount = feeIndex >= 0 ? configuredPrizes[feeIndex] : null;
         prizeDistribution = prizeAmount > 0 ? [prizeAmount] : [];
         if (prizeAmount == null || prizeAmount <= 0) throw Object.assign(new Error('এই Pro Match entry fee বর্তমানে উপলব্ধ নয়।'), { statusCode: 400 });
       }
@@ -1985,7 +2001,25 @@ app.patch('/api/settings', auth, admin, async (req, res) => {
     if (rows.length < 1 || rows.some(x=>!Number.isInteger(x.players)||x.players<3||x.players>1000||x.entryFee<=0||!x.prizes.length||x.prizes.length>x.players||x.prizes.reduce((a,v)=>a+v,0)>money(x.entryFee*x.players)) || new Set(rows.map(x=>x.players)).size !== rows.length) return res.status(400).json({message:'প্রতিটি Multiplayer Player Count 3 থেকে 1000-এর মধ্যে আলাদা পূর্ণ সংখ্যা হতে হবে। Entry Fee দিন এবং Prize Distribution-এ 1 থেকে ওই player count পর্যন্ত rank prize দিন। মোট prize মোট entry fee-এর বেশি হতে পারবে না।'});
     paymentPatch.multiplayerProMatches = rows.sort((a,b)=>a.displayOrder-b.displayOrder);
   }
-if (b.proMatchFees !== undefined) { const fees = Array.isArray(b.proMatchFees) ? b.proMatchFees.map(Number) : []; if (fees.length !== 6 || fees.some(n => !Number.isFinite(n) || n <= 0) || new Set(fees.map(n => n.toFixed(2))).size !== 6) return res.status(400).json({ message: 'Pro Match entry fee অবশ্যই ৬টি আলাদা positive amount হতে হবে।' }); paymentPatch.proMatchFees = fees.map(n => money(n)); }
+if (b.proMatchFees !== undefined || b.proMatchPrizes !== undefined) {
+  const fees = Array.isArray(b.proMatchFees) ? b.proMatchFees.map(Number) : [];
+  const prizes = Array.isArray(b.proMatchPrizes) ? b.proMatchPrizes.map(Number) : [];
+
+  if (
+    fees.length < 1 ||
+    fees.length !== prizes.length ||
+    fees.some(n => !Number.isFinite(n) || n <= 0) ||
+    prizes.some(n => !Number.isFinite(n) || n <= 0) ||
+    new Set(fees.map(n => n.toFixed(2))).size !== fees.length
+  ) {
+    return res.status(400).json({
+      message: 'Pro Match Entry Fee ও Payout-এর Option সংখ্যা সমান এবং প্রতিটি Amount ০-এর বেশি হতে হবে।'
+    });
+  }
+
+  paymentPatch.proMatchFees = fees.map(n => money(n));
+  paymentPatch.proMatchPrizes = prizes.map(n => money(n));
+}
   req.db.paymentSettings = { ...req.db.paymentSettings, ...paymentPatch };
   req.db.referralSettings = { ...referralSettings(req.db), enabled: b.referralEnabled !== undefined ? Boolean(b.referralEnabled) : referralSettings(req.db).enabled, bonusAmount: b.referralBonusAmount !== undefined ? money(Math.max(0, Number(b.referralBonusAmount) || 0)) : referralSettings(req.db).bonusAmount, minDeposit: b.referralMinDeposit !== undefined ? money(Math.max(0, Number(b.referralMinDeposit) || 0)) : referralSettings(req.db).minDeposit, requireFirstProMatch: b.referralRequireFirstProMatch !== undefined ? Boolean(b.referralRequireFirstProMatch) : referralSettings(req.db).requireFirstProMatch };
   await saveDb(req.db); res.json({ paymentSettings: req.db.paymentSettings, referralSettings: referralSettings(req.db) });

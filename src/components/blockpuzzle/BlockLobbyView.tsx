@@ -31,12 +31,24 @@ export interface EntryFeeOption {
 }
 
 const DEFAULT_PRO_MATCH_FEES = [20, 30, 60, 120, 250, 500];
-const PRO_MATCH_PRIZES = [35, 50, 100, 200, 420, 850];
-export const ENTRY_FEE_OPTIONS: EntryFeeOption[] = DEFAULT_PRO_MATCH_FEES.map((fee, i) => ({ fee, prize: PRO_MATCH_PRIZES[i], label: `৳${fee} (উইন ৳${PRO_MATCH_PRIZES[i]})` }));
-export const getProMatchEntryFeeOptions = (fees?: number[]): EntryFeeOption[] => {
-  const safeFees = Array.isArray(fees) && fees.length === 6 && fees.every(n => Number.isFinite(Number(n)) && Number(n) > 0) ? fees.map(Number) : DEFAULT_PRO_MATCH_FEES;
-  return safeFees.map((fee, i) => ({ fee, prize: PRO_MATCH_PRIZES[i], label: `৳${fee} (উইন ৳${PRO_MATCH_PRIZES[i]})` }));
-};
+const DEFAULT_PRO_MATCH_PRIZES = [35, 50, 100, 200, 420, 850];
+export const ENTRY_FEE_OPTIONS: EntryFeeOption[] = DEFAULT_PRO_MATCH_FEES.map((fee, i) => ({ fee, prize: DEFAULT_PRO_MATCH_PRIZES[i], label: `৳${fee} (উইন ৳${DEFAULT_PRO_MATCH_PRIZES[i]})` }));
+export const getProMatchEntryFeeOptions = (fees?: number[], prizes?: number[]): EntryFeeOption[] => {
+  const safeFees = Array.isArray(fees) && fees.length > 0 && fees.every(n => Number.isFinite(Number(n)) && Number(n) > 0)
+    ? fees.map(Number)
+    : DEFAULT_PRO_MATCH_FEES;
+
+  const safePrizes =
+    Array.isArray(prizes) && prizes.length === safeFees.length && prizes.every(n => Number.isFinite(Number(n)) && Number(n) > 0)
+      ? prizes.map(Number)
+      : safeFees.map((_, i) => DEFAULT_PRO_MATCH_PRIZES[i] || 0);
+
+  return safeFees.map((fee, i) => ({
+    fee,
+    prize: safePrizes[i],
+    label: `৳${fee} (উইন ৳${safePrizes[i]})`
+  }));
+};;
 
 interface BlockLobbyViewProps {
   userRating: number;
@@ -46,6 +58,7 @@ interface BlockLobbyViewProps {
   userBalance: number;
   pendingMatchesCount: number;
   proMatchFees?: number[];
+  proMatchPrizes?: number[];
   multiplayerProConfig?: { players: number; entryFee: number; prizeAmount: number; name?: string } | null;
   isAdmin?: boolean;
   onStartDuel: (entryFee: number, prize: number) => void | Promise<void>;
@@ -70,6 +83,7 @@ export const BlockLobbyView: React.FC<BlockLobbyViewProps> = ({
   userBalance,
   pendingMatchesCount,
   proMatchFees,
+  proMatchPrizes,
   multiplayerProConfig,
   isAdmin = false,
   onStartDuel,
@@ -85,9 +99,15 @@ export const BlockLobbyView: React.FC<BlockLobbyViewProps> = ({
   isMuted,
   onToggleMute,
 }) => {
-  const entryFeeOptions = multiplayerProConfig ? [{ fee: Number(multiplayerProConfig.entryFee), prize: Number(multiplayerProConfig.prizeAmount), label: `৳${Number(multiplayerProConfig.entryFee)} (উইন ৳${Number(multiplayerProConfig.prizeAmount)})` }] : getProMatchEntryFeeOptions(proMatchFees);
+  const entryFeeOptions = multiplayerProConfig
+    ? [{ fee: Number(multiplayerProConfig.entryFee), prize: Number(multiplayerProConfig.prizeAmount), label: `৳${Number(multiplayerProConfig.entryFee)} (উইন ৳${Number(multiplayerProConfig.prizeAmount)})` }]
+    : getProMatchEntryFeeOptions(proMatchFees, proMatchPrizes);
+
   const [selectedFee, setSelectedFee] = useState<EntryFeeOption>(entryFeeOptions[0]);
-  useEffect(() => { setSelectedFee(prev => entryFeeOptions.find(opt => opt.fee === prev.fee) || entryFeeOptions[0]); }, [proMatchFees, multiplayerProConfig?.entryFee, multiplayerProConfig?.prizeAmount]);
+
+  useEffect(() => {
+    setSelectedFee(prev => entryFeeOptions.find(opt => opt.fee === prev.fee) || entryFeeOptions[0]);
+  }, [proMatchFees, proMatchPrizes, multiplayerProConfig?.entryFee, multiplayerProConfig?.prizeAmount]);
   const [selectedDifficulty, setSelectedDifficulty] = useState<PracticeDifficulty>('normal');
   const [startingMatch, setStartingMatch] = useState(false);
 

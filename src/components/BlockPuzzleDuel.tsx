@@ -1223,6 +1223,7 @@ export const BlockPuzzleDuel: React.FC = () => {
           userBalance={user?.gamingBalance || 0}
           pendingMatchesCount={activePendingCount}
           proMatchFees={paymentSettings.proMatchFees}
+          proMatchPrizes={paymentSettings.proMatchPrizes}
           multiplayerProConfig={multiplayerProConfig}
           isAdmin={Boolean(user?.isAdmin)}
           onStartDuel={handleStartDuel}
