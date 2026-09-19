@@ -1459,23 +1459,14 @@ app.post('/api/block-puzzle/matches/:id/submit', async (req, res) => {
         return { match: blockPuzzlePublicMatch(session, db), user: db.users.find(u => u.id === payload.userId) };
       });
 
-      // Tournament score/status is already written atomically above.
-      // Do not make the player wait for tournament settlement/payout preparation.
+      // Tournament score/attempt/bestScore must be fully settled before
+      // responding. Otherwise the Rank List can show the previous attempt
+      // until the background settlement finishes.
       if (fast.tournamentId) {
-        waitUntil(
-          settlementPromise.catch(err => {
-            console.error('Tournament settlement failed:', err);
-          })
-        );
-
-        res.json({
-          match: blockPuzzlePublicMatch(fast.session, { users: [fast.user] }),
-          user: publicUser(fast.user)
-        });
-        return;
+        result = await settlementPromise;
+      } else {
+        result = await settlementPromise;
       }
-
-      result = await settlementPromise;
     } else {
       // Solo submission is already fully written by submitBlockPuzzleScoreFast().
       // Do not perform another full MongoDB app_state read just to build the response.
