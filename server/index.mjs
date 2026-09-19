@@ -1563,9 +1563,11 @@ app.get('/api/admin/block-puzzle/matches', auth, admin, (req, res) => {
     const key = s.duelId || s.id;
     const status = String(s.status || '').toUpperCase();
 
-    // COMPLETED match deleted by Admin stays in user history,
-    // but remains hidden from the Admin Match List.
-    if (status === 'COMPLETED' && hiddenCompleted.has(String(key))) continue;
+    // Any match deleted by Admin must stay hidden from the Admin Match List.
+    // This includes completed, refunded and non-completed matches.
+    // Keeping the delete marker prevents a later server write from making
+    // an already-deleted match appear again.
+    if (hiddenCompleted.has(String(key))) continue;
 
     const item = groups.get(key) || {
       id: key,
@@ -1612,28 +1614,35 @@ app.delete('/api/admin/block-puzzle/matches/:id', auth, admin, async (req, res) 
         s => String(s.status || '').toUpperCase() === 'COMPLETED'
       );
 
-      if (allCompleted) {
-        // Completed match: hide ONLY from Admin Match List.
-        // Keep blockPuzzleMatches untouched so user's History remains.
-        db.adminDeletedBlockPuzzleMatchIds = Array.from(
-          new Set([
-            ...(db.adminDeletedBlockPuzzleMatchIds || []).map(String),
-            key
-          ])
-        );
+      // IMPORTANT: keep a permanent Admin-delete marker for EVERY
+      // match type. Otherwise a later full-state write can resurrect a
+      // previously deleted refunded/non-completed match in the Admin List.
+      db.adminDeletedBlockPuzzleMatchIds = Array.from(
+        new Set([
+          ...(db.adminDeletedBlockPuzzleMatchIds || []).map(String),
+          key
+        ])
+      );
 
+      if (allCompleted) {
+        // Completed match: hide from Admin Match List but keep the
+        // underlying record so the user's History remains intact.
         await saveDbPartial(db, ['adminDeletedBlockPuzzleMatchIds']);
 
         return { ok: true, completedOnly: true };
       }
 
-      // Any non-completed match: remove the actual match records.
-      // This also removes it from the user's Block Puzzle history.
+      // Non-completed/refunded match: remove the actual match records.
       db.blockPuzzleMatches = items.filter(
         s => !(String(s.duelId || '') === key || String(s.id || '') === key)
       );
 
-      await saveDbPartial(db, ['blockPuzzleMatches']);
+      // Persist both the physical deletion and the permanent Admin
+      // deletion marker.
+      await saveDbPartial(db, [
+        'blockPuzzleMatches',
+        'adminDeletedBlockPuzzleMatchIds'
+      ]);
 
       return { ok: true, completedOnly: false };
     });
