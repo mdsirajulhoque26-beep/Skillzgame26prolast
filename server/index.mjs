@@ -1564,39 +1564,103 @@ app.post('/api/admin/block-puzzle/leaderboards/:id/finalize', auth, admin, async
 
 app.get('/api/admin/block-puzzle/matches', auth, admin, (req, res) => {
   const groups = new Map();
+  const hiddenCompleted = new Set(
+    (req.db.adminDeletedBlockPuzzleMatchIds || []).map(String)
+  );
+
   for (const s of (req.db.blockPuzzleMatches || [])) {
     const key = s.duelId || s.id;
-    const item = groups.get(key) || { id: key, duelId: s.duelId || null, status: s.status, entryFee: s.entryFee, prizeAmount: s.prizeAmount, createdAt: s.createdAt, players: [] };
-    item.status = s.status === 'COMPLETED' ? 'completed' : s.status.toLowerCase();
-    item.players.push({ userId: s.userId, name: s.userName, score: s.score ?? null, outcome: s.outcome || null });
+    const status = String(s.status || '').toUpperCase();
+
+    // COMPLETED match deleted by Admin stays in user history,
+    // but remains hidden from the Admin Match List.
+    if (status === 'COMPLETED' && hiddenCompleted.has(String(key))) continue;
+
+    const item = groups.get(key) || {
+      id: key,
+      duelId: s.duelId || null,
+      status: s.status,
+      entryFee: s.entryFee,
+      prizeAmount: s.prizeAmount,
+      createdAt: s.createdAt,
+      players: []
+    };
+
+    item.status = status === 'COMPLETED' ? 'completed' : String(s.status || '').toLowerCase();
+    item.players.push({
+      userId: s.userId,
+      name: s.userName,
+      score: s.score ?? null,
+      outcome: s.outcome || null
+    });
+
     groups.set(key, item);
   }
+
   res.json({ matches: [...groups.values()] });
 });
 app.delete('/api/admin/block-puzzle/matches/:id', auth, admin, async (req, res) => {
   const key = String(req.params.id || '');
+
   try {
     const result = await withDbLock(async () => {
-      // Reload the latest DB state inside the lock so an Admin delete cannot
-      // overwrite a newer match/score update from another request.
+      // Always reload the latest state so Admin delete cannot overwrite
+      // a newer score/status update from another request.
       const db = await loadDb();
-      const items = db.blockPuzzleMatches || [];
-      const targets = items.filter(s => String(s.duelId || '') === key || String(s.id || '') === key);
-      if (!targets.length) return { statusCode: 404, message: 'Block Puzzle match not found.' };
-      const terminal = new Set(['COMPLETED', 'REFUNDED']);
-      if (targets.some(s => !terminal.has(String(s.status || '').toUpperCase()))) {
-        return { statusCode: 409, message: 'শুধু সম্পন্ন/রিফান্ড হওয়া ম্যাচ ডিলিট করা যাবে।' };
+      const items = Array.isArray(db.blockPuzzleMatches) ? db.blockPuzzleMatches : [];
+
+      const targets = items.filter(
+        s => String(s.duelId || '') === key || String(s.id || '') === key
+      );
+
+      if (!targets.length) {
+        return { statusCode: 404, message: 'Block Puzzle match not found.' };
       }
-      db.blockPuzzleMatches = items.filter(s => !(String(s.duelId || '') === key || String(s.id || '') === key));
-      // Only the match-history collection is persisted here; other app state
-      // is intentionally left untouched.
+
+      const allCompleted = targets.every(
+        s => String(s.status || '').toUpperCase() === 'COMPLETED'
+      );
+
+      if (allCompleted) {
+        // Completed match: hide ONLY from Admin Match List.
+        // Keep blockPuzzleMatches untouched so user's History remains.
+        db.adminDeletedBlockPuzzleMatchIds = Array.from(
+          new Set([
+            ...(db.adminDeletedBlockPuzzleMatchIds || []).map(String),
+            key
+          ])
+        );
+
+        await saveDbPartial(db, ['adminDeletedBlockPuzzleMatchIds']);
+
+        return { ok: true, completedOnly: true };
+      }
+
+      // Any non-completed match: remove the actual match records.
+      // This also removes it from the user's Block Puzzle history.
+      db.blockPuzzleMatches = items.filter(
+        s => !(String(s.duelId || '') === key || String(s.id || '') === key)
+      );
+
       await saveDbPartial(db, ['blockPuzzleMatches']);
-      return { ok: true };
+
+      return { ok: true, completedOnly: false };
     });
-    if (result.statusCode) return res.status(result.statusCode).json({ message: result.message });
-    res.json({ ok: true });
+
+    if (result.statusCode) {
+      return res.status(result.statusCode).json({
+        message: result.message
+      });
+    }
+
+    res.json({
+      ok: true,
+      completedOnly: Boolean(result.completedOnly)
+    });
   } catch (err) {
-    res.status(err.statusCode || 503).json({ message: err?.message || 'Match delete করা যায়নি।' });
+    res.status(err.statusCode || 503).json({
+      message: err?.message || 'Match delete করা যায়নি।'
+    });
   }
 });
 

@@ -806,7 +806,7 @@ export const AdminPanel: React.FC = () => {
           <div className="space-y-4">
             <div className="bg-[#121935] p-4 rounded-2xl border border-indigo-900/60">
               <h2 className="text-base font-bold text-white flex items-center gap-2"><Gamepad2 className="w-5 h-5 text-amber-400" /> Block Puzzle Match List</h2>
-              <p className="text-xs text-slate-400 mt-1">স্বয়ংক্রিয় matchmaking-এর ম্যাচ। এখানে শুধু দেখুন এবং সম্পন্ন/রিফান্ড হওয়া ম্যাচ মুছুন।</p>
+              <p className="text-xs text-slate-400 mt-1">স্বয়ংক্রিয় matchmaking-এর সব ম্যাচ এখানে দেখুন। যেকোনো ম্যাচ Admin চাইলে সাথে সাথে মুছতে পারবেন।</p>
             </div>
             {blockPuzzleMatches.length === 0 ? (
               <div className="bg-[#121935] p-8 rounded-2xl border border-indigo-900/60 text-center text-sm text-slate-500">কোনো Block Puzzle ম্যাচ নেই।</div>
@@ -817,9 +817,34 @@ export const AdminPanel: React.FC = () => {
                     <div className="font-black text-amber-400 text-sm">Match #{String(m.id).slice(-6)}</div>
                     <div className="text-[11px] text-slate-400">Entry ৳{m.entryFee} • Prize ৳{m.prizeAmount} • {m.status}</div>
                   </div>
-                  {['completed','refunded'].includes(String(m.status).toLowerCase()) && (
-                    <button onClick={async () => { if (!window.confirm(`Match #${String(m.id).slice(-6)} মুছে ফেলবেন?`)) return; try { await backendApi.deleteAdminBlockPuzzleMatch(m.id); await refreshBlockPuzzleMatches(); showToast('Match সফলভাবে মুছে ফেলা হয়েছে।'); } catch (e:any) { showToast(e?.message || 'Match delete করা যায়নি।', 'error'); } }} className="px-3 py-2 rounded-xl bg-red-500/15 border border-red-500/40 text-red-300 text-xs font-black"><Trash2 className="w-4 h-4 inline mr-1" />মুছুন</button>
-                  )}
+                  <button
+                    onClick={async () => {
+                      if (!window.confirm(`Match #${String(m.id).slice(-6)} মুছে ফেলবেন?`)) return;
+
+                      const previous = blockPuzzleMatches;
+
+                      // Admin UI থেকে সঙ্গে সঙ্গে সরিয়ে দিন
+                      setBlockPuzzleMatches(prev =>
+                        prev.filter(x => String(x.id) !== String(m.id))
+                      );
+
+                      try {
+                        await backendApi.deleteAdminBlockPuzzleMatch(m.id);
+                        showToast('Match সফলভাবে মুছে ফেলা হয়েছে।');
+                      } catch (e:any) {
+                        // Server delete ব্যর্থ হলে card ফিরিয়ে দিন
+                        setBlockPuzzleMatches(previous);
+                        showToast(
+                          e?.message || 'Match delete করা যায়নি।',
+                          'error'
+                        );
+                      }
+                    }}
+                    className="px-3 py-2 rounded-xl bg-red-500/15 border border-red-500/40 text-red-300 text-xs font-black"
+                  >
+                    <Trash2 className="w-4 h-4 inline mr-1" />
+                    মুছুন
+                  </button>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   {(m.players || []).map((pl:any) => <div key={pl.userId} className="bg-[#0b1022] rounded-xl p-2.5 border border-indigo-950"><div className="text-xs font-bold text-white truncate">{pl.name}</div><div className="text-[11px] text-slate-400">Score: {pl.score ?? '—'} • {pl.outcome || 'waiting'}</div></div>)}
