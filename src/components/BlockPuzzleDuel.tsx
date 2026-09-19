@@ -530,7 +530,7 @@ export const BlockPuzzleDuel: React.FC = () => {
   // Real-time duel transport. HTTP remains the source of truth for matchmaking and settlement;
   // WebSocket carries low-latency board/move state between the two players.
   useEffect(() => {
-    if (gameMode !== 'duel' || !activeMatchId || !matchedOpponent || !user?.id || screenState !== 'playing') return;
+    if (gameMode !== 'duel' || !activeMatchId || !user?.id || screenState !== 'playing') return;
     const token = localStorage.getItem('skillz_api_token') || '';
     if (!token) return;
 
@@ -582,7 +582,7 @@ export const BlockPuzzleDuel: React.FC = () => {
       if (liveSocketRef.current === ws) liveSocketRef.current = null;
       setLiveConnected(false);
     };
-  }, [gameMode, activeMatchId, matchedOpponent?.name, screenState, user?.id]);
+  }, [gameMode, activeMatchId, screenState, user?.id]);
 
   const sendLiveMove = (matrix: number[][], row: number, col: number) => {
     const move = { type: 'MOVE', moveIndex: liveMoveIndexRef.current, matrix, row, col };

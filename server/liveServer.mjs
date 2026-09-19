@@ -3,6 +3,16 @@ import crypto from 'node:crypto';
 import { WebSocketServer } from 'ws';
 import app from './index.mjs';
 import { loadDb, saveDb, withDbLock, now } from './store.mjs';
+import {
+  generateBlockTrio,
+  matricesEqual,
+  validateExpectedPiece,
+  advanceTrioIfNeeded,
+  emptyBoard as authoritativeEmptyBoard,
+  canPlace as authoritativeCanPlace,
+  applyMove as authoritativeApplyMove,
+  scoreMove as authoritativeScoreMove
+} from './blockPuzzleAuthoritative.mjs';
 
 const PORT = Number(process.env.LIVE_PORT || process.env.PORT || 8787);
 const TOKEN_SECRET = process.env.TOKEN_SECRET?.trim() || '';
@@ -76,8 +86,13 @@ function stateFor(session, userId) {
   const opponentId = session.opponentUserId;
   const opp = opponentId ? (ls.players?.[opponentId] || null) : null;
   return {
-    type: 'STATE', version: 1, matchId: session.id, duelId: session.duelId || null,
-    serverTime: Date.now(), gameStartedAt: session.gameStartedAt || session.startsAt || null,
+    type: 'STATE',
+    version: 1,
+    matchId: session.id,
+    duelId: session.duelId || null,
+    tournamentId: session.tournamentId || null,
+    serverTime: Date.now(),
+    gameStartedAt: session.gameStartedAt || session.startsAt || null,
     remainingMs: Math.max(0, (Date.parse(session.gameStartedAt || session.startsAt || '') + BP_GAME_MS) - Date.now()),
     self: { moveIndex: Number(mine.moveIndex || 0) }
   };
@@ -90,11 +105,11 @@ function broadcast(duelId, message) {
 
 async function handleMessage(ws, session, user, msg) {
   if (!msg || msg.type !== 'MOVE') return;
-  if (session.status !== 'PLAYING' || !session.duelId) return ws.send(JSON.stringify({ type:'ERROR', code:'MATCH_NOT_LIVE' }));
+  if (session.status !== 'PLAYING' || (!session.duelId && !session.tournamentId)) return ws.send(JSON.stringify({ type:'ERROR', code:'MATCH_NOT_LIVE' }));
   const result = await withDbLock(async () => {
     const db = await loadDb();
     const current = (db.blockPuzzleMatches || []).find(m => m.id === session.id && m.userId === user.id);
-    if (!current || !current.duelId || current.status !== 'PLAYING') throw new Error('MATCH_NOT_LIVE');
+    if (!current || (!current.duelId && !current.tournamentId) || current.status !== 'PLAYING') throw new Error('MATCH_NOT_LIVE');
     const started = Date.parse(current.gameStartedAt || current.startsAt || '');
     if (!started || started + BP_GAME_MS <= Date.now()) throw new Error('MATCH_ENDED');
     const matrix = msg.matrix;
@@ -102,8 +117,29 @@ async function handleMessage(ws, session, user, msg) {
     if (!validMatrix(matrix) || !Number.isInteger(row) || !Number.isInteger(col)) throw new Error('INVALID_MOVE');
     current.liveState ||= { players: {}, updatedAt: now() };
     current.liveState.players ||= {};
-    current.liveState.players[user.id] ||= { board: emptyBoard(), score: 0, linesCleared: 0, combo: 0, streak: 0, moveIndex: 0 };
+    current.liveState.players[user.id] ||= { board: emptyBoard(), score: 0, linesCleared: 0, combo: 0, streak: 0, bestCombo: 0, moveIndex: 0 };
     const p = current.liveState.players[user.id];
+    p.trioIndex = Number(p.trioIndex || 0);
+    p.usedPieceIndexes = Array.isArray(p.usedPieceIndexes) ? p.usedPieceIndexes : [];
+
+    const authoritativeState = {
+      seed: Number(current.gameSeed),
+      difficulty: String(current.difficulty || 'normal'),
+      trioIndex: p.trioIndex,
+      usedPieceIndexes: p.usedPieceIndexes
+    };
+
+    if (!Number.isInteger(authoritativeState.seed) || authoritativeState.seed < 1 || authoritativeState.seed > 2147483646) {
+      throw new Error('INVALID_GAME_SEED');
+    }
+
+    const expectedPiece = validateExpectedPiece(authoritativeState, matrix);
+
+    if (!expectedPiece?.ok) {
+      throw new Error('INVALID_PIECE');
+    }
+
+    p.usedPieceIndexes = expectedPiece.nextUsedPieceIndexes;
     const moveIndex = Number(msg.moveIndex);
     if (!Number.isInteger(moveIndex) || moveIndex !== Number(p.moveIndex || 0)) throw new Error('OUT_OF_ORDER');
     if (!canPlace(p.board, matrix, row, col)) throw new Error('ILLEGAL_PLACEMENT');
@@ -112,7 +148,21 @@ async function handleMessage(ws, session, user, msg) {
     p.board = placed.board;
     p.score = Number(p.score||0) + scored.points;
     p.linesCleared = Number(p.linesCleared||0) + placed.lines;
-    p.combo = scored.combo; p.streak = scored.streak; p.moveIndex++;
+    p.combo = scored.combo;
+    p.streak = scored.streak;
+    p.bestCombo = Math.max(Number(p.bestCombo||0), Number(scored.combo||0));
+    p.moveIndex++;
+
+    const trioState = advanceTrioIfNeeded(
+      {
+        trioIndex: p.trioIndex,
+        usedPieceIndexes: p.usedPieceIndexes
+      },
+      p.usedPieceIndexes
+    );
+
+    p.trioIndex = trioState.trioIndex;
+    p.usedPieceIndexes = trioState.usedPieceIndexes;
     p.lastActionAt = Date.now();
     current.moveIndex = Math.max(Number(current.moveIndex||0), p.moveIndex);
     current.liveUpdatedAt = now();
@@ -126,7 +176,8 @@ async function handleMessage(ws, session, user, msg) {
     userId: user.id,
     moveIndex: result.p.moveIndex - 1
   };
-  broadcast(result.current.duelId, message);
+  const channelId = result.current.duelId || `tournament:${result.current.tournamentId}:${result.current.id}`;
+    broadcast(channelId, message);
 }
 
 const server = http.createServer((req,res) => app(req,res));
@@ -166,20 +217,21 @@ wss.on('connection', async (ws, req) => {
       ws.on('close',()=>{set.delete(ws);if(!set.size)connections.delete(arcade.duelId);broadcast(arcade.duelId,{type:'ARCADE_PRESENCE',userId:user.id,connected:false});});
       return;
     }
-    if (!session?.duelId || !session.opponentUserId) return ws.close(1008, 'Match not ready');
+    if (!session?.duelId && !session?.tournamentId) return ws.close(1008, 'Match not ready');
     const user = db.users.find(u => u.id === payload.userId);
     if (!user || user.isBanned) return ws.close(1008, 'Account unavailable');
-    const set = connections.get(session.duelId) || new Set(); set.add(ws); connections.set(session.duelId, set);
-    ws.userId = user.id; ws.duelId = session.duelId;
+    const channelId = session.duelId || `tournament:${session.tournamentId}:${session.id}`;
+    const set = connections.get(channelId) || new Set(); set.add(ws); connections.set(channelId, set);
+    ws.userId = user.id; ws.duelId = session.duelId || null; ws.liveChannelId = channelId;
     ws.send(JSON.stringify(stateFor(session, user.id)));
-    broadcast(session.duelId, { type:'PRESENCE', userId:user.id, connected:true });
+    broadcast(channelId, { type:'PRESENCE', userId:user.id, connected:true });
     ws.on('message', async raw => {
       try { if (raw.length > 128 * 1024 || !allowSocketMessage(ws)) return ws.send(JSON.stringify({type:'ERROR',code:'RATE_LIMITED'})); await handleMessage(ws, session, user, JSON.parse(raw.toString())); }
       catch (e) { ws.send(JSON.stringify({ type:'ERROR', code:e?.message || 'LIVE_ERROR' })); }
     });
     ws.on('close', () => {
-      set.delete(ws); if (!set.size) connections.delete(session.duelId);
-      broadcast(session.duelId, { type:'PRESENCE', userId:user.id, connected:false });
+      set.delete(ws); if (!set.size) connections.delete(channelId);
+      broadcast(channelId, { type:'PRESENCE', userId:user.id, connected:false });
     });
   } catch (e) { try { ws.close(1011, 'Server error'); } catch {} }
 });

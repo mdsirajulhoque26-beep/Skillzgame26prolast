@@ -253,28 +253,36 @@ export async function submitBlockPuzzleScoreFast(matchId, userId, score, linesCl
     return { ok: false, statusCode: 409, message: 'এই ম্যাচটি আর সাবমিট করা যাবে না।' };
   }
   if (!user || user.isBanned) return { ok: false, statusCode: 403, message: 'Account unavailable' };
-  const nScore = Math.max(0, Math.floor(Number(score || 0)));
-  const nLines = Math.max(0, Math.floor(Number(linesCleared || 0)));
-  const nCombo = Math.max(0, Math.floor(Number(bestCombo || 0)));
-  if (!Number.isFinite(nScore)) return { ok: false, statusCode: 400, message: 'Invalid Block Puzzle score.' };
+  const authoritative = session.liveState?.players?.[String(userId)];
+  if (!authoritative) {
+    return { ok: false, statusCode: 409, message: 'Authoritative game state পাওয়া যায়নি।' };
+  }
+
+  const nScore = Math.max(0, Math.floor(Number(authoritative.score || 0)));
+  const nLines = Math.max(0, Math.floor(Number(authoritative.linesCleared || 0)));
+  const nCombo = Math.max(0, Math.floor(Number(authoritative.bestCombo || 0)));
+
+  if (!Number.isFinite(nScore) || !Number.isFinite(nLines) || !Number.isFinite(nCombo)) {
+    return { ok: false, statusCode: 400, message: 'Invalid authoritative Block Puzzle state.' };
+  }
 
   const submittedAt = new Date().toISOString();
   const filter = {
     _id: STATE_ID,
     data: { $exists: true },
-    'data.blockPuzzleMatches': { $elemMatch: { id: String(matchId), userId: String(userId), status: { $in: ['PLAYING', 'SUBMITTED'] } } }
+    'data.blockPuzzleMatches': { $elemMatch: { id: String(matchId), userId: String(userId), status: 'PLAYING' } }
   };
   const result = await collection.updateOne(filter, {
     $set: {
-      'data.blockPuzzleMatches.$[m].status': session.status === 'PLAYING' ? 'SUBMITTED' : session.status,
-      'data.blockPuzzleMatches.$[m].submittedAt': session.status === 'PLAYING' ? submittedAt : (session.submittedAt || submittedAt),
-      'data.blockPuzzleMatches.$[m].gameEndedAt': session.status === 'PLAYING' ? submittedAt : (session.gameEndedAt || submittedAt),
+      'data.blockPuzzleMatches.$[m].status': 'SUBMITTED',
+      'data.blockPuzzleMatches.$[m].submittedAt': submittedAt,
+      'data.blockPuzzleMatches.$[m].gameEndedAt': submittedAt,
       'data.blockPuzzleMatches.$[m].score': nScore,
       'data.blockPuzzleMatches.$[m].linesCleared': nLines,
       'data.blockPuzzleMatches.$[m].bestCombo': nCombo,
       updatedAt: new Date()
     }
-  }, { arrayFilters: [{ 'm.id': String(matchId), 'm.userId': String(userId), 'm.status': { $in: ['PLAYING', 'SUBMITTED'] } }] });
+  }, { arrayFilters: [{ 'm.id': String(matchId), 'm.userId': String(userId), 'm.status': 'PLAYING' }] });
   if (result.matchedCount !== 1) return { ok: false, statusCode: 409, message: 'এই ম্যাচটি ইতিমধ্যে পরিবর্তিত হয়েছে। আবার চেষ্টা করুন।' };
   return {
     ok: true,
@@ -285,7 +293,7 @@ export async function submitBlockPuzzleScoreFast(matchId, userId, score, linesCl
     matchId: String(matchId),
     // The read above is already enough to answer a normal solo submission.
     // Returning these snapshots avoids a second full app_state read at game end.
-    session: { ...session, status: session.status === 'PLAYING' ? 'SUBMITTED' : session.status, submittedAt: session.status === 'PLAYING' ? submittedAt : (session.submittedAt || submittedAt), gameEndedAt: session.status === 'PLAYING' ? submittedAt : (session.gameEndedAt || submittedAt), score: nScore, linesCleared: nLines, bestCombo: nCombo },
+    session: { ...session, status: 'SUBMITTED', submittedAt, gameEndedAt: submittedAt, score: nScore, linesCleared: nLines, bestCombo: nCombo },
     user
   };
 }
