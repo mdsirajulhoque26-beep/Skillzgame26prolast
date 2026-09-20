@@ -238,11 +238,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const [me, txData, mine] = await Promise.all([backendApi.me(), backendApi.transactions(), backendApi.myRequests()]);
         applyApiUser(me.user);
         setTransactions(txData.transactions as Transaction[]);
-        setDepositRequests(mine.depositRequests as DepositRequest[]);
-        setWithdrawRequests(mine.withdrawRequests as WithdrawRequest[]);
-        setResultSubmissions(mine.resultSubmissions as ResultSubmission[]);
+        if (isAdminMode) {
+          refreshUsers();
+        } else {
+          setDepositRequests(prev => mergeStableById(prev, mine.depositRequests as DepositRequest[]));
+          setWithdrawRequests(prev => mergeStableById(prev, mine.withdrawRequests as WithdrawRequest[]));
+          setResultSubmissions(mine.resultSubmissions as ResultSubmission[]);
+        }
       } catch (e) { console.error('User state refresh failed:', e); }
-      if (isAdminMode) refreshUsers();
     }, 5000);
     return () => window.clearInterval(timer);
   }, [isLoggedIn, isAdminMode]);
