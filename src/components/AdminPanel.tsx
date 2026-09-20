@@ -736,6 +736,8 @@ export const AdminPanel: React.FC = () => {
                 <div className="text-[10px] text-slate-400 mt-1">উইথড্র যোগ্য ব্যালেন্স</div>
               </div>
             </div>
+          </div>
+        )}
 
         {/* ================= 2. BLOCK PUZZLE MATCH LIST ================= */}
         {activeAdminTab === 'matches' && (

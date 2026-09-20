@@ -1,42 +1,115 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { ArrowUpRight, X, AlertCircle, ShieldCheck, Trophy, Loader2, CheckCircle2 } from 'lucide-react';
+import {
+  ArrowUpRight,
+  X,
+  AlertCircle,
+  ShieldCheck,
+  Trophy,
+  Loader2,
+  CheckCircle2,
+} from 'lucide-react';
 
 export const WithdrawModal: React.FC = () => {
-  const { activeModal, closeModal, user, withdrawMoney, paymentSettings } = useApp();
-  const [method, setMethod] = useState<'bKash' | 'Nagad' | 'Rocket' | 'Upay' | 'Binance / USDT'>('bKash');
+  const {
+    activeModal,
+    closeModal,
+    user,
+    withdrawMoney,
+    paymentSettings,
+  } = useApp();
+
+  const [method, setMethod] = useState<
+    'bKash' | 'Nagad' | 'Rocket' | 'Upay' | 'Binance / USDT'
+  >('bKash');
+
   const [accountNumber, setAccountNumber] = useState<string>('');
   const [amount, setAmount] = useState<number>(100);
-  const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);\n  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [status, setStatus] = useState<{
+    ok: boolean;
+    msg: string;
+  } | null>(null);
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const methods = [
-    ...(paymentSettings?.withdrawBkashEnabled !== false && paymentSettings?.bkash ? ['bKash' as const] : []),
-    ...(paymentSettings?.withdrawNagadEnabled !== false && paymentSettings?.nagad ? ['Nagad' as const] : []),
-    ...(paymentSettings?.withdrawRocketEnabled !== false && paymentSettings?.rocket ? ['Rocket' as const] : []),
-    ...(paymentSettings?.withdrawUpayEnabled !== false && paymentSettings?.upay ? ['Upay' as const] : []),
-    ...(paymentSettings?.withdrawBinanceUsdtEnabled !== false && paymentSettings?.binanceUsdtEnabled !== false && paymentSettings?.binanceUsdt ? ['Binance / USDT' as const] : []),
+    ...(paymentSettings?.withdrawBkashEnabled !== false &&
+    paymentSettings?.bkash
+      ? ['bKash' as const]
+      : []),
+
+    ...(paymentSettings?.withdrawNagadEnabled !== false &&
+    paymentSettings?.nagad
+      ? ['Nagad' as const]
+      : []),
+
+    ...(paymentSettings?.withdrawRocketEnabled !== false &&
+    paymentSettings?.rocket
+      ? ['Rocket' as const]
+      : []),
+
+    ...(paymentSettings?.withdrawUpayEnabled !== false &&
+    paymentSettings?.upay
+      ? ['Upay' as const]
+      : []),
+
+    ...(paymentSettings?.withdrawBinanceUsdtEnabled !== false &&
+    paymentSettings?.binanceUsdtEnabled !== false &&
+    paymentSettings?.binanceUsdt
+      ? ['Binance / USDT' as const]
+      : []),
   ];
-  React.useEffect(() => { if (methods.length && !methods.includes(method)) setMethod(methods[0]); }, [paymentSettings, method, methods.length]);
+
+  React.useEffect(() => {
+    if (methods.length && !methods.includes(method)) {
+      setMethod(methods[0]);
+    }
+  }, [paymentSettings, method, methods.length]);
 
   if (activeModal !== 'withdraw') return null;
 
   const handleWithdrawSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Already processing হলে আবার submit হবে না
+    if (isSubmitting) return;
+
     setStatus(null);
+    setIsSubmitting(true);
 
-    const res = await withdrawMoney(method, 'Personal', accountNumber, amount);
-    setStatus({ ok: res.success, msg: res.message });
+    try {
+      const res = await withdrawMoney(
+        method,
+        'Personal',
+        accountNumber,
+        amount
+      );
 
-    if (res.success) {
-      setTimeout(() => {
-        closeModal();
-      }, 2000);
+      setStatus({
+        ok: res.success,
+        msg: res.message,
+      });
+
+      if (res.success) {
+        setTimeout(() => {
+          closeModal();
+        }, 2200);
+      }
+    } catch (err: any) {
+      setStatus({
+        ok: false,
+        msg:
+          err?.message ||
+          'উইথড্র রিকোয়েস্ট পাঠানো যায়নি। আবার চেষ্টা করুন।',
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/85 backdrop-blur-sm animate-fade-in overflow-y-auto">
-      <div 
+      <div
         id="withdraw-modal-box"
         className="w-full max-w-sm bg-[#121935] border border-teal-500/50 rounded-2xl p-5 shadow-2xl relative text-white my-6"
       >
@@ -46,15 +119,23 @@ export const WithdrawModal: React.FC = () => {
             <div className="w-8 h-8 rounded-full bg-teal-500/20 flex items-center justify-center text-teal-400">
               <ArrowUpRight className="w-4 h-4" />
             </div>
+
             <div>
-              <h3 className="text-base font-bold text-white">Withdraw (উইথড্রয়াল)</h3>
-              <p className="text-[10px] text-slate-400">উইনিং ব্যালেন্স উত্তোলন করুন</p>
+              <h3 className="text-base font-bold text-white">
+                Withdraw (উইথড্রয়াল)
+              </h3>
+
+              <p className="text-[10px] text-slate-400">
+                উইনিং ব্যালেন্স উত্তোলন করুন
+              </p>
             </div>
           </div>
+
           <button
             id="withdraw-close-btn"
             onClick={closeModal}
-            className="w-7 h-7 rounded-full bg-indigo-950 text-slate-400 hover:text-white flex items-center justify-center"
+            disabled={isSubmitting}
+            className="w-7 h-7 rounded-full bg-indigo-950 text-slate-400 hover:text-white flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <X className="w-4 h-4" />
           </button>
@@ -64,31 +145,44 @@ export const WithdrawModal: React.FC = () => {
         <div className="bg-[#0b1022] border border-teal-500/30 rounded-xl p-3 mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Trophy className="w-4 h-4 text-amber-400" />
-            <span className="text-xs text-slate-300">বর্তমান উইনিং ব্যালেন্স:</span>
+
+            <span className="text-xs text-slate-300">
+              বর্তমান উইনিং ব্যালেন্স:
+            </span>
           </div>
+
           <span className="font-mono text-base font-black text-emerald-400">
             ৳{user.winningBalance.toFixed(2)}
           </span>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleWithdrawSubmit} className="space-y-3.5">
+        <form
+          onSubmit={handleWithdrawSubmit}
+          className="space-y-3.5"
+        >
           {/* Method Selection */}
           <div>
             <label className="block text-xs font-bold text-slate-300 mb-1.5">
               উইথড্র মেথড সিলেক্ট করুন:
             </label>
-            <div className={`grid ${methods.length > 3 ? 'grid-cols-2' : 'grid-cols-3'} gap-1.5`}>
+
+            <div
+              className={`grid ${
+                methods.length > 3 ? 'grid-cols-2' : 'grid-cols-3'
+              } gap-1.5`}
+            >
               {methods.map((m) => (
                 <button
                   key={m}
                   type="button"
                   onClick={() => setMethod(m)}
+                  disabled={isSubmitting}
                   className={`py-2 rounded-xl text-xs font-bold transition-all border ${
                     method === m
                       ? 'bg-teal-600 border-teal-400 text-white font-extrabold shadow-md'
                       : 'bg-[#0b1022] border-indigo-900 text-slate-300'
-                  }`}
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
                   {m}
                 </button>
@@ -99,15 +193,23 @@ export const WithdrawModal: React.FC = () => {
           {/* Account Number */}
           <div>
             <label className="block text-xs font-bold text-slate-300 mb-1">
-              {method === 'Binance / USDT' ? 'আপনার Binance / USDT Wallet Address:' : `আপনার ${method} Personal নম্বর:`}
+              {method === 'Binance / USDT'
+                ? 'আপনার Binance / USDT Wallet Address:'
+                : `আপনার ${method} Personal নম্বর:`}
             </label>
+
             <input
               id="withdraw-account-number"
               type="tel"
-              placeholder={method === 'Binance / USDT' ? 'USDT Wallet Address' : '01XXXXXXXXX'}
+              placeholder={
+                method === 'Binance / USDT'
+                  ? 'USDT Wallet Address'
+                  : '01XXXXXXXXX'
+              }
               value={accountNumber}
               onChange={(e) => setAccountNumber(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-[#0b1022] border border-indigo-900 focus:border-teal-400 rounded-xl text-sm font-mono text-white focus:outline-none"
+              disabled={isSubmitting}
+              className="w-full px-3.5 py-2.5 bg-[#0b1022] border border-indigo-900 focus:border-teal-400 rounded-xl text-sm font-mono text-white focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
               required
             />
           </div>
@@ -117,35 +219,64 @@ export const WithdrawModal: React.FC = () => {
             <label className="block text-xs font-bold text-slate-300 mb-1">
               উইথড্রয়াল পরিমাণ (সর্বনিম্ন ৳১০০):
             </label>
+
             <input
               id="withdraw-amount-input"
               type="number"
               min={100}
               value={amount}
               onChange={(e) => setAmount(Number(e.target.value))}
-              className="w-full px-3.5 py-2.5 bg-[#0b1022] border border-indigo-900 focus:border-teal-400 rounded-xl text-sm font-mono text-white focus:outline-none"
+              disabled={isSubmitting}
+              className="w-full px-3.5 py-2.5 bg-[#0b1022] border border-indigo-900 focus:border-teal-400 rounded-xl text-sm font-mono text-white focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
               required
             />
           </div>
 
+          {/* Status */}
           {status && (
             <div
               className={`p-2.5 rounded-xl text-xs flex items-center gap-1.5 border ${
-                status.ok ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-200' : 'bg-red-500/20 border-red-500/40 text-red-200'
+                status.ok
+                  ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-200'
+                  : 'bg-red-500/20 border-red-500/40 text-red-200'
               }`}
             >
-              {status.ok ? <ShieldCheck className="w-4 h-4 text-emerald-400" /> : <AlertCircle className="w-4 h-4 text-red-400" />}
+              {status.ok ? (
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-red-400" />
+              )}
+
               <span>{status.msg}</span>
             </div>
           )}
 
+          {/* Withdraw Button */}
           <button
             id="withdraw-submit-btn"
             type="submit"
-            className="w-full py-3 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 text-white font-black text-sm rounded-xl shadow-lg shadow-teal-500/20 active:scale-95 transition-all mt-2 cursor-pointer"
+            disabled={isSubmitting || !!status?.ok}
+            className="w-full py-3 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-400 hover:to-teal-500 text-white font-black text-sm rounded-xl shadow-lg shadow-teal-500/20 active:scale-95 transition-all mt-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            উইথড্র রিকোয়েস্ট পাঠান
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                রিকোয়েস্ট পাঠানো হচ্ছে...
+              </>
+            ) : status?.ok ? (
+              <>
+                <CheckCircle2 className="w-4 h-4" />
+                রিকোয়েস্ট সফলভাবে পাঠানো হয়েছে
+              </>
+            ) : (
+              'উইথড্র রিকোয়েস্ট পাঠান'
+            )}
           </button>
+
+          {/* Processing hint */}
+          <p className="text-[10px] text-center text-slate-500">
+            ক্লিক করার পর অপেক্ষা করুন—রিকোয়েস্ট সফল হলে নিচে নিশ্চিত বার্তা দেখাবে।
+          </p>
         </form>
       </div>
     </div>
