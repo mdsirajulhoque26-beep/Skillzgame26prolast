@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { ArrowUpRight, X, AlertCircle, ShieldCheck, Trophy } from 'lucide-react';
+import { ArrowUpRight, X, AlertCircle, ShieldCheck, Trophy, Loader2, CheckCircle2 } from 'lucide-react';
 
 export const WithdrawModal: React.FC = () => {
   const { activeModal, closeModal, user, withdrawMoney, paymentSettings } = useApp();
   const [method, setMethod] = useState<'bKash' | 'Nagad' | 'Rocket' | 'Upay' | 'Binance / USDT'>('bKash');
   const [accountNumber, setAccountNumber] = useState<string>('');
   const [amount, setAmount] = useState<number>(100);
-  const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);\n  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const methods = [
     ...(paymentSettings?.withdrawBkashEnabled !== false && paymentSettings?.bkash ? ['bKash' as const] : []),

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { ArrowRightLeft, X, Trophy, Gamepad2, AlertCircle, ShieldCheck } from 'lucide-react';
+import { ArrowRightLeft, X, Trophy, Gamepad2, AlertCircle, ShieldCheck, Loader2, CheckCircle2 } from 'lucide-react';
 
 export const TransferModal: React.FC = () => {
   const { activeModal, closeModal, user, transferWinningBalance } = useApp();
   const [amount, setAmount] = useState<number>(user.winningBalance || 50);
-  const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);\n  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (activeModal !== 'transfer') return null;
 
