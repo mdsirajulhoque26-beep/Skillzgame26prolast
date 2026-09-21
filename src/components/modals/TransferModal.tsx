@@ -41,9 +41,7 @@ export const TransferModal: React.FC = () => {
       });
 
       if (res.success) {
-        setTimeout(() => {
-          closeModal();
-        }, 1800);
+        closeModal();
       }
     } catch (err: any) {
       setStatus({

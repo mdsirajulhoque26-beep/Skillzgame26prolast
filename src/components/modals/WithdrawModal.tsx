@@ -91,9 +91,7 @@ export const WithdrawModal: React.FC = () => {
       });
 
       if (res.success) {
-        setTimeout(() => {
-          closeModal();
-        }, 2200);
+        closeModal();
       }
     } catch (err: any) {
       setStatus({
