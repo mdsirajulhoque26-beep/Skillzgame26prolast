@@ -1533,62 +1533,100 @@ app.post('/api/block-puzzle/matches/:id/submit', async (req, res) => {
     const fast = await submitBlockPuzzleScoreFast(req.params.id, payload.userId, score, linesCleared, bestCombo);
     if (!fast.ok) return res.status(fast.statusCode || 503).json({ message: fast.message });
 
-    // A normal solo/matchmaking submission is now complete after the atomic
-    // score write. Multiplayer/tournament settlement keeps the existing lock
-    // and payout logic, but only runs when it is actually required.
-    let result;
+    // The score itself is already written atomically by submitBlockPuzzleScoreFast().
+    // Tournament/duel settlement is intentionally moved to the background so the
+    // player does not wait for the global Block Puzzle lock or payout processing.
     if (fast.needsSettlement) {
-      const settlementPromise = withDbLock(async () => {
+      void withDbLock(async () => {
         const db = await loadDb();
-        const session = (db.blockPuzzleMatches || []).find(m => m.id === req.params.id && m.userId === payload.userId);
-        if (!session) throw Object.assign(new Error('Block Puzzle match not found.'), { statusCode: 404 });
+        const session = (db.blockPuzzleMatches || []).find(
+          m => m.id === req.params.id && m.userId === payload.userId
+        );
+        if (!session) throw Object.assign(
+          new Error('Block Puzzle match not found.'),
+          { statusCode: 404 }
+        );
+
         if (session.tournamentId) {
           session.status = 'COMPLETED';
           session.outcome = 'TOURNAMENT';
           session.settledAt = session.settledAt || now();
-          const t = (db.tournaments || []).find(x => x.id === session.tournamentId);
+
+          const t = (db.tournaments || []).find(
+            x => x.id === session.tournamentId
+          );
+
           if (t && t.status === 'ACTIVE') {
             const entries = ensureTournamentEntries(db, t);
             const entry = entries.find(e => e.userId === session.userId);
+
             if (entry) {
-              entry.attempts = Math.max(Number(entry.attempts || 0), (db.blockPuzzleMatches || []).filter(m => m.tournamentId === t.id && m.userId === session.userId).length);
-              if (Number(session.score || 0) >= Number(entry.bestScore || 0)) { entry.bestScore = Number(session.score || 0); entry.bestScoreAt = session.submittedAt || now(); entry.lastMatchId = session.id; }
+              entry.attempts = Math.max(
+                Number(entry.attempts || 0),
+                (db.blockPuzzleMatches || []).filter(
+                  m => m.tournamentId === t.id && m.userId === session.userId
+                ).length
+              );
+
+              if (Number(session.score || 0) >= Number(entry.bestScore || 0)) {
+                entry.bestScore = Number(session.score || 0);
+                entry.bestScoreAt = session.submittedAt || now();
+                entry.lastMatchId = session.id;
+              }
             }
-            const lastPlayer = entries.find(e => Number(e.entryNumber) === Number(t.maxPlayers));
-            if (entries.length >= Number(t.maxPlayers) && lastPlayer && lastPlayer.userId === session.userId) await finalizeTournamentInternal(db, t);
+
+            const lastPlayer = entries.find(
+              e => Number(e.entryNumber) === Number(t.maxPlayers)
+            );
+
+            if (
+              entries.length >= Number(t.maxPlayers) &&
+              lastPlayer &&
+              lastPlayer.userId === session.userId
+            ) {
+              await finalizeTournamentInternal(db, t);
+            }
           }
         }
-        if (session.duelId) await settleBlockPuzzleDuel(db, session.duelId);
-        maybeAwardReferralBonus(db, session.userId);
-        await saveDbPartial(db, ['blockPuzzleMatches', 'users', 'transactions', 'tournaments', 'tournamentEntries', 'referrals']);
-        // Re-apply the just-submitted score with an atomic field update. This
-        // protects the player's final score from a concurrent legacy full-state
-        // write that may have loaded the match before submission. Settlement/status
-        // changes above are preserved; only the player's score fields are reinforced.
-        await reinforceBlockPuzzleScore(req.params.id, payload.userId, score, linesCleared, bestCombo, fast.session.submittedAt);
-        session.score = score;
-        session.linesCleared = linesCleared;
-        session.bestCombo = bestCombo;
-        session.submittedAt = fast.session.submittedAt;
-        return { match: blockPuzzlePublicMatch(session, db), user: db.users.find(u => u.id === payload.userId) };
-      });
 
-      // Tournament score/attempt/bestScore must be fully settled before
-      // responding. Otherwise the Rank List can show the previous attempt
-      // until the background settlement finishes.
-      if (fast.tournamentId) {
-        result = await settlementPromise;
-      } else {
-        result = await settlementPromise;
-      }
-    } else {
-      // Solo submission is already fully written by submitBlockPuzzleScoreFast().
-      // Do not perform another full MongoDB app_state read just to build the response.
-      const session = fast.session;
-      const user = fast.user;
-      result = { match: blockPuzzlePublicMatch(session, { users: [user] }), user };
+        if (session.duelId) {
+          await settleBlockPuzzleDuel(db, session.duelId);
+        }
+
+        maybeAwardReferralBonus(db, session.userId);
+
+        await saveDbPartial(db, [
+          'blockPuzzleMatches',
+          'users',
+          'transactions',
+          'tournaments',
+          'tournamentEntries',
+          'referrals'
+        ]);
+
+        // Protect the submitted score from any concurrent legacy full-state write.
+        await reinforceBlockPuzzleScore(
+          req.params.id,
+          payload.userId,
+          score,
+          linesCleared,
+          bestCombo,
+          fast.session.submittedAt
+        );
+      }).catch(err => {
+        // Background settlement failure must not make the player's Submit fail.
+        console.error(
+          '[block-puzzle] background settlement failed:',
+          err
+        );
+      });
     }
-    res.json({ match: result.match, user: publicUser(result.user) });
+
+    // Respond immediately after the atomic score write.
+    res.json({
+      match: blockPuzzlePublicMatch(fast.session, { users: [fast.user] }),
+      user: publicUser(fast.user)
+    });
   } catch (err) { res.status(err.statusCode || 503).json({ message: err?.message || 'স্কোর সাবমিট করা যায়নি।' }); }
 });
 const blockPuzzleCleanup = async (req, res) => {
