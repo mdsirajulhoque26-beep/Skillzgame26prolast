@@ -393,6 +393,18 @@ async function settleBlockPuzzleDuel(db, duelId) {
   return true;
 }
 
+async function reconcileBlockPuzzleDuel(duelId) {
+  if (!duelId) return false;
+  return withDbLock(async () => {
+    const db = await loadDb();
+    const changed = await settleBlockPuzzleDuel(db, duelId);
+    if (changed) {
+      await saveDbPartial(db, ['blockPuzzleMatches', 'users', 'transactions']);
+    }
+    return changed;
+  });
+}
+
 function leaderboardEntries(db, board, freeze = false) {
   if (freeze && Array.isArray(board.finalEntries)) return board.finalEntries;
   const users = new Map((db.users || []).map(u => [u.id, u]));
@@ -1461,6 +1473,15 @@ app.get('/api/block-puzzle/matches/:id/status', async (req, res) => {
     if (!liveUser || liveUser.isBanned) return res.status(403).json({ message: 'Account unavailable' });
     const session = (db.blockPuzzleMatches || []).find(m => m.id === req.params.id && m.userId === payload.userId);
     if (!session) return res.json({ match: null, user: publicUser(liveUser) });
+
+    // Repair previously stuck multiplayer matches whose players already submitted.
+    if (session.status === 'SUBMITTED' && session.duelId) {
+      waitUntil(
+        reconcileBlockPuzzleDuel(session.duelId)
+          .catch(err => console.error('[block-puzzle] status reconciliation failed:', err))
+      );
+    }
+
     res.json({ match: blockPuzzlePublicMatch(session, db), user: publicUser(liveUser) });
   } catch (err) { res.status(503).json({ message: err?.message || 'Match status unavailable.' }); }
 });
@@ -1537,7 +1558,7 @@ app.post('/api/block-puzzle/matches/:id/submit', async (req, res) => {
     // Tournament/duel settlement is intentionally moved to the background so the
     // player does not wait for the global Block Puzzle lock or payout processing.
     if (fast.needsSettlement) {
-      void withDbLock(async () => {
+      waitUntil(withDbLock(async () => {
         const db = await loadDb();
         const session = (db.blockPuzzleMatches || []).find(
           m => m.id === req.params.id && m.userId === payload.userId
@@ -1619,7 +1640,7 @@ app.post('/api/block-puzzle/matches/:id/submit', async (req, res) => {
           '[block-puzzle] background settlement failed:',
           err
         );
-      });
+      }));
     }
 
     // Respond immediately after the atomic score write.
@@ -1705,13 +1726,31 @@ app.post('/api/admin/block-puzzle/leaderboards/:id/finalize', auth, admin, async
   } catch (err) { res.status(err.statusCode || 503).json({ message: err?.message || 'Leaderboard finalize করা যায়নি।' }); }
 });
 
-app.get('/api/admin/block-puzzle/matches', auth, admin, (req, res) => {
+app.get('/api/admin/block-puzzle/matches', auth, admin, async (req, res) => {
+  // Repair previously stuck multiplayer matches before showing the Admin list.
+  const pendingDuelIds = [
+    ...new Set(
+      (req.db.blockPuzzleMatches || [])
+        .filter(s => s.duelId && String(s.status || '').toUpperCase() === 'SUBMITTED')
+        .map(s => String(s.duelId))
+    )
+  ];
+
+  for (const duelId of pendingDuelIds) {
+    try {
+      await reconcileBlockPuzzleDuel(duelId);
+    } catch (err) {
+      console.error('[block-puzzle] admin reconciliation failed:', err);
+    }
+  }
+
+  const latestDb = pendingDuelIds.length ? await loadDb() : req.db;
   const groups = new Map();
   const hiddenCompleted = new Set(
-    (req.db.adminDeletedBlockPuzzleMatchIds || []).map(String)
+    (latestDb.adminDeletedBlockPuzzleMatchIds || []).map(String)
   );
 
-  for (const s of (req.db.blockPuzzleMatches || [])) {
+  for (const s of (latestDb.blockPuzzleMatches || [])) {
     const key = s.duelId || s.id;
     const status = String(s.status || '').toUpperCase();
 
