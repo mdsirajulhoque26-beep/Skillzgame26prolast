@@ -71,6 +71,7 @@ export const backendApi = {
   myBlockPuzzleMatches: () => request<{ matches: any[] }>('/block-puzzle/matches/mine'),
   pendingGames: () => request<{ items: any[] }>('/pending-games'),
   history: () => request<{ items: any[] }>('/history'),
+  passwordResetSupportRequest: (phone: string) => request<{ ok: boolean; message: string }>('/support-chat/password-reset-request', { method: 'POST', body: JSON.stringify({ phone }) }),
   supportChat: () => request<{ chat: any | null }>('/support-chat'),
   sendSupportMessage: (message: string) => request<{ chat: any }>('/support-chat/messages', { method: 'POST', body: JSON.stringify({ message }) }),
   closeSupportChat: () => request<{ chat: any }>('/support-chat/close', { method: 'POST' }),

@@ -1046,6 +1046,63 @@ app.patch('/api/admin/match-disputes/:id', auth, admin, async (req, res) => {
   } catch (err) { res.status(503).json({ message: err?.message || 'Complaint update করা যায়নি।' }); }
 });
 
+app.post('/api/support-chat/password-reset-request', authRateLimit, async (req, res) => {
+  try {
+    const phone = safeText(req.body?.phone, 40).trim();
+    if (!phone) return res.status(400).json({ message: 'Phone Number দিন।' });
+
+    const db = await loadDb();
+    const users = Array.isArray(db.users) ? db.users : [];
+    const user = users.find(u => !u.isAdmin && String(u.phone || '').trim() === phone);
+
+    const chats = Array.isArray(db.supportChats) ? db.supportChats : [];
+    let chat = user
+      ? chats.find(c => String(c.userId) === String(user.id))
+      : chats.find(c => !c.userId && String(c.userPhone || '').trim() === phone);
+
+    if (!chat) {
+      chat = {
+        id: id('support'),
+        userId: user?.id || null,
+        userName: user?.name || 'Password Reset Request',
+        userPhone: phone,
+        status: 'OPEN',
+        createdAt: now(),
+        updatedAt: now(),
+        unreadForUser: 0,
+        unreadForAdmin: 0,
+        messages: []
+      };
+      chats.unshift(chat);
+    }
+
+    chat.status = 'OPEN';
+    chat.userName = user?.name || chat.userName || 'Password Reset Request';
+    chat.userPhone = user?.phone || phone;
+    chat.updatedAt = now();
+    chat.messages = Array.isArray(chat.messages) ? chat.messages : [];
+    chat.messages.push({
+      id: id('msg'),
+      senderType: 'USER',
+      senderId: user?.id || null,
+      message: '🔐 পাসওয়ার্ড ভুলে গেছি। অনুগ্রহ করে আমার অ্যাকাউন্ট যাচাই করে Admin Password Reset দিয়ে নতুন পাসওয়ার্ড সেট করে দিন।',
+      createdAt: now()
+    });
+    chat.unreadForAdmin = Number(chat.unreadForAdmin || 0) + 1;
+    chat.unreadForUser = 0;
+
+    db.supportChats = chats;
+    await saveDbPartial(db, ['supportChats']);
+
+    res.status(201).json({
+      ok: true,
+      message: 'আপনার Password Reset request Live Support Chat-এ পাঠানো হয়েছে। Admin যাচাই করে Password Reset করবেন।'
+    });
+  } catch (err) {
+    res.status(503).json({ message: err?.message || 'Password Reset request পাঠানো যায়নি।' });
+  }
+});
+
 app.get('/api/support-chat', auth, async (req, res) => {
   try {
     const chats = Array.isArray(req.db.supportChats) ? req.db.supportChats : [];

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { backendApi } from '../services/backendApi';
 import { 
   Phone, 
   Lock, 
@@ -16,7 +17,7 @@ import {
 } from 'lucide-react';
 
 export const AuthScreen: React.FC = () => {
-  const { login, register, registeredUsers, paymentSettings } = useApp();
+  const { login, register, registeredUsers } = useApp();
   const [isRegisterMode, setIsRegisterMode] = useState<boolean>(false);
   const [name, setName] = useState<string>('');
   const [phone, setPhone] = useState<string>('');
@@ -102,10 +103,31 @@ export const AuthScreen: React.FC = () => {
     setPassword('');
   };
 
-  const handleWhatsAppReset = () => {
-    const num = paymentSettings.whatsappSupport || '';
-    const message = encodeURIComponent(`Hello Admin, I forgot my password for Skill Game account. My Phone Number: ${phone || '...'}`);
-    window.open(`https://wa.me/88${num.replace(/[^0-9]/g, '')}?text=${message}`, '_blank');
+  const handlePasswordResetSupport = async () => {
+    const cleanPhone = phone.trim();
+
+    if (!cleanPhone) {
+      setError('পাসওয়ার্ড রিসেটের জন্য আপনার মোবাইল নম্বর দিন।');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const res = await backendApi.passwordResetSupportRequest(cleanPhone);
+
+      if (res.ok) {
+        setShowForgetModal(false);
+        setError(res.message || 'আপনার Password Reset request Live Support Chat-এ পাঠানো হয়েছে।');
+      } else {
+        setError(res.message || 'Password Reset request পাঠানো যায়নি।');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Password Reset request পাঠানো যায়নি।');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -333,7 +355,7 @@ export const AuthScreen: React.FC = () => {
         </div>
       </div>
 
-      {/* Forget Password Direct WhatsApp Modal */}
+      {/* Forget Password Live Support Modal */}
       {showForgetModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in">
           <div className="bg-[#101735] border-2 border-amber-500/50 rounded-3xl p-5 max-w-xs w-full shadow-2xl text-center space-y-4">
@@ -344,18 +366,18 @@ export const AuthScreen: React.FC = () => {
             <div>
               <h3 className="text-base font-black text-white">পাসওয়ার্ড ভুলে গেছেন?</h3>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                পাসওয়ার্ড রিসেটের জন্য কোনো ওটিপি ঝামেলার প্রয়োজন নেই। সরাসরি আমাদের WhatsApp নম্বরে যোগাযোগ করে ইনস্ট্যান্ট নতুন পাসওয়ার্ড সংগ্রহ করুন।
+                আপনার মোবাইল নম্বর দিয়ে Password Reset request পাঠান। Admin Live Support Chat-এ requestটি দেখতে পাবেন এবং যাচাই করে নতুন পাসওয়ার্ড সেট করবেন।
               </p>
             </div>
 
             <div className="space-y-2">
               <button
                 type="button"
-                onClick={handleWhatsAppReset}
+                onClick={handlePasswordResetSupport}
                 className="w-full py-3 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-white font-black text-xs rounded-xl shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-transform"
               >
                 <MessageCircle className="w-4 h-4 fill-current" />
-                <span>WhatsApp এ মেসেজ দিন</span>
+                <span>{isLoading ? 'Request পাঠানো হচ্ছে...' : 'Live Support Chat-এ Request পাঠান'}</span>
               </button>
 
               <button
