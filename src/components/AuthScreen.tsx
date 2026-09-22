@@ -35,6 +35,10 @@ export const AuthScreen: React.FC = () => {
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState<boolean>(false);
   const [showForgetModal, setShowForgetModal] = useState<boolean>(false);
+  const [guestSupportToken, setGuestSupportToken] = useState<string>(() => localStorage.getItem('skillz_password_reset_support_token') || '');
+  const [guestSupportChat, setGuestSupportChat] = useState<any | null>(null);
+  const [guestSupportMessage, setGuestSupportMessage] = useState<string>('');
+  const [showGuestSupportChat, setShowGuestSupportChat] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
@@ -103,6 +107,42 @@ export const AuthScreen: React.FC = () => {
     setPassword('');
   };
 
+  useEffect(() => {
+    if (!guestSupportToken || !showGuestSupportChat) return;
+
+    let active = true;
+
+    const loadGuestChat = async () => {
+      try {
+        const res = await backendApi.guestSupportChat(guestSupportToken);
+        if (active) setGuestSupportChat(res.chat || null);
+      } catch {
+        // Keep the existing chat visible if a background poll fails.
+      }
+    };
+
+    loadGuestChat();
+    const timer = window.setInterval(loadGuestChat, 3000);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [guestSupportToken, showGuestSupportChat]);
+
+  const handleGuestSupportSend = async () => {
+    const message = guestSupportMessage.trim();
+    if (!guestSupportToken || !message) return;
+
+    try {
+      const res = await backendApi.sendGuestSupportMessage(guestSupportToken, message);
+      setGuestSupportChat(res.chat);
+      setGuestSupportMessage('');
+    } catch (err: any) {
+      setError(err?.message || 'Message পাঠানো যায়নি।');
+    }
+  };
+
   const handlePasswordResetSupport = async () => {
     const cleanPhone = phone.trim();
 
@@ -118,8 +158,21 @@ export const AuthScreen: React.FC = () => {
       const res = await backendApi.passwordResetSupportRequest(cleanPhone);
 
       if (res.ok) {
+        if (res.guestToken) {
+          localStorage.setItem('skillz_password_reset_support_token', res.guestToken);
+          setGuestSupportToken(res.guestToken);
+        }
         setShowForgetModal(false);
-        setError(res.message || 'আপনার Password Reset request Live Support Chat-এ পাঠানো হয়েছে।');
+        setShowGuestSupportChat(true);
+        setError('');
+        try {
+          if (res.guestToken) {
+            const chatRes = await backendApi.guestSupportChat(res.guestToken);
+            setGuestSupportChat(chatRes.chat || null);
+          }
+        } catch {
+          // The chat will retry automatically through polling.
+        }
       } else {
         setError(res.message || 'Password Reset request পাঠানো যায়নি।');
       }
@@ -354,6 +407,81 @@ export const AuthScreen: React.FC = () => {
           </button>
         </div>
       </div>
+
+
+      {/* Guest Live Support Chat */}
+      {showGuestSupportChat && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+          <div className="bg-[#101735] border-2 border-emerald-500/40 rounded-3xl p-4 max-w-sm w-full shadow-2xl">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                  <MessageCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white">Live Support Chat</h3>
+                  <p className="text-[10px] text-emerald-400">Admin-এর সাথে কথা বলুন</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowGuestSupportChat(false)}
+                className="text-slate-400 hover:text-white text-xl px-2"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="h-64 overflow-y-auto rounded-2xl bg-[#080d20] border border-indigo-900/60 p-3 space-y-2">
+              {guestSupportChat?.messages?.length ? (
+                guestSupportChat.messages.map((msg: any) => (
+                  <div
+                    key={msg.id}
+                    className={`flex ${msg.senderType === 'USER' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-[82%] rounded-2xl px-3 py-2 text-xs ${
+                        msg.senderType === 'USER'
+                          ? 'bg-emerald-600 text-white rounded-br-md'
+                          : 'bg-indigo-900/80 text-slate-100 rounded-bl-md'
+                      }`}
+                    >
+                      {msg.message}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="h-full flex items-center justify-center text-xs text-slate-500 text-center">
+                  Admin-এর reply-এর জন্য অপেক্ষা করুন...
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 mt-3">
+              <input
+                value={guestSupportMessage}
+                onChange={(e) => setGuestSupportMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleGuestSupportSend();
+                  }
+                }}
+                placeholder="আপনার message লিখুন..."
+                className="flex-1 min-w-0 bg-[#080d20] border border-indigo-800 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-emerald-500"
+              />
+              <button
+                type="button"
+                onClick={handleGuestSupportSend}
+                disabled={!guestSupportMessage.trim()}
+                className="px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-bold text-xs"
+              >
+                পাঠান
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Forget Password Live Support Modal */}
       {showForgetModal && (

@@ -1063,6 +1063,7 @@ app.post('/api/support-chat/password-reset-request', authRateLimit, async (req, 
     if (!chat) {
       chat = {
         id: id('support'),
+        guestToken: id('guest'),
         userId: user?.id || null,
         userName: user?.name || 'Password Reset Request',
         userPhone: phone,
@@ -1094,12 +1095,68 @@ app.post('/api/support-chat/password-reset-request', authRateLimit, async (req, 
     db.supportChats = chats;
     await saveDbPartial(db, ['supportChats']);
 
+    if (!chat.guestToken) chat.guestToken = id('guest');
+
     res.status(201).json({
       ok: true,
+      guestToken: chat.guestToken,
       message: 'আপনার Password Reset request Live Support Chat-এ পাঠানো হয়েছে। Admin যাচাই করে Password Reset করবেন।'
     });
   } catch (err) {
     res.status(503).json({ message: err?.message || 'Password Reset request পাঠানো যায়নি।' });
+  }
+});
+
+const guestSupportToken = (token) => safeText(token, 200).trim();
+
+app.get('/api/support-chat/guest', async (req, res) => {
+  try {
+    const token = guestSupportToken(req.query?.token);
+    if (!token) return res.status(400).json({ message: 'Support token পাওয়া যায়নি।' });
+
+    const db = await loadDb();
+    const chats = Array.isArray(db.supportChats) ? db.supportChats : [];
+    const chat = chats.find(c => String(c.guestToken || '') === token) || null;
+
+    res.json({ chat });
+  } catch (err) {
+    res.status(503).json({ message: err?.message || 'Guest support chat unavailable.' });
+  }
+});
+
+app.post('/api/support-chat/guest/messages', async (req, res) => {
+  try {
+    const token = guestSupportToken(req.body?.token);
+    const message = safeText(req.body?.message, 2000).trim();
+
+    if (!token) return res.status(400).json({ message: 'Support token পাওয়া যায়নি।' });
+    if (!message) return res.status(400).json({ message: 'Message লিখুন।' });
+
+    const db = await loadDb();
+    const chats = Array.isArray(db.supportChats) ? db.supportChats : [];
+    const chat = chats.find(c => String(c.guestToken || '') === token);
+
+    if (!chat) return res.status(404).json({ message: 'Support chat পাওয়া যায়নি।' });
+
+    chat.status = 'OPEN';
+    chat.updatedAt = now();
+    chat.messages = Array.isArray(chat.messages) ? chat.messages : [];
+    chat.messages.push({
+      id: id('msg'),
+      senderType: 'USER',
+      senderId: chat.userId || null,
+      message,
+      createdAt: now()
+    });
+    chat.unreadForAdmin = Number(chat.unreadForAdmin || 0) + 1;
+    chat.unreadForUser = 0;
+
+    db.supportChats = chats;
+    await saveDbPartial(db, ['supportChats']);
+
+    res.status(201).json({ chat });
+  } catch (err) {
+    res.status(503).json({ message: err?.message || 'Message পাঠানো যায়নি।' });
   }
 });
 
