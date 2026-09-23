@@ -1727,24 +1727,10 @@ app.post('/api/admin/block-puzzle/leaderboards/:id/finalize', auth, admin, async
 });
 
 app.get('/api/admin/block-puzzle/matches', auth, admin, async (req, res) => {
-  // Repair previously stuck multiplayer matches before showing the Admin list.
-  const pendingDuelIds = [
-    ...new Set(
-      (req.db.blockPuzzleMatches || [])
-        .filter(s => s.duelId && String(s.status || '').toUpperCase() === 'SUBMITTED')
-        .map(s => String(s.duelId))
-    )
-  ];
-
-  for (const duelId of pendingDuelIds) {
-    try {
-      await reconcileBlockPuzzleDuel(duelId);
-    } catch (err) {
-      console.error('[block-puzzle] admin reconciliation failed:', err);
-    }
-  }
-
-  const latestDb = pendingDuelIds.length ? await loadDb() : req.db;
+  // Load the Admin match list directly.
+  // Do not reconcile submitted duels here because a stuck duel
+  // must never block the Admin Match List from loading.
+  const latestDb = req.db;
   const groups = new Map();
   const hiddenCompleted = new Set(
     (latestDb.adminDeletedBlockPuzzleMatchIds || []).map(String)
