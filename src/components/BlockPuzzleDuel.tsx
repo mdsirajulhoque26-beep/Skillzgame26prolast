@@ -910,7 +910,81 @@ export const BlockPuzzleDuel: React.FC = () => {
       if (id) {
         sessionStorage.setItem('skillz_tournament_id', id);
         sessionStorage.setItem('skillz_tournament_match_id', String(settled?.id || activeMatchId));
-        await openTournamentRankList(id);
+
+        // Tournament Rank List must open immediately after the score write.
+        // Do not wait for the second tournament API request before showing it.
+        const submittedScore = Number(playerState.score || 0);
+        setTournamentId(id);
+        setGameMode('tournament');
+
+        setTournamentData((previous: any) => {
+          if (!previous) return previous;
+
+          const currentEntries = Array.isArray(previous.entries)
+            ? previous.entries.map((entry: any) => ({ ...entry }))
+            : [];
+
+          const userId = String(user?.id || '');
+          const existingIndex = currentEntries.findIndex(
+            (entry: any) => String(entry.userId) === userId
+          );
+
+          if (existingIndex >= 0) {
+            const entry = currentEntries[existingIndex];
+            entry.score = Math.max(Number(entry.score || 0), submittedScore);
+            entry.attempts = Number(entry.attempts || 0) + 1;
+            entry.bestScoreAt = new Date().toISOString();
+          } else if (userId) {
+            currentEntries.push({
+              userId,
+              username: user?.name || 'You',
+              avatarUrl: (user as any)?.avatarUrl || '',
+              avatar: (user as any)?.avatar || '',
+              score: submittedScore,
+              attempts: 1,
+              entryNumber: currentEntries.length + 1,
+              bestScoreAt: new Date().toISOString(),
+              prize: 0
+            });
+          }
+
+          currentEntries.sort(
+            (a: any, b: any) =>
+              Number(b.score || 0) - Number(a.score || 0) ||
+              Number(a.entryNumber || 0) - Number(b.entryNumber || 0)
+          );
+
+          const rankedEntries = currentEntries.map((entry: any, index: number) => ({
+            ...entry,
+            rank: index + 1,
+            prize: Number(previous.prizes?.[index] || 0)
+          }));
+
+          return {
+            ...previous,
+            entries: rankedEntries,
+            playerCount: Math.max(
+              Number(previous.playerCount || 0),
+              rankedEntries.length
+            ),
+            registeredPlayers: Math.max(
+              Number(previous.registeredPlayers || 0),
+              rankedEntries.length
+            )
+          };
+        });
+
+        // Show the rank screen now. The authoritative server ranking is refreshed
+        // silently in the background and can correct the optimistic view.
+        setTournamentLoading(false);
+        setScreenState('tournament_rank');
+
+        void (async () => {
+          try {
+            const data = await (await import('../services/backendApi')).backendApi.tournament(id);
+            if (data.tournament) setTournamentData(data.tournament);
+          } catch {}
+        })();
       } else {
         alert('Tournament ID পাওয়া যায়নি।');
         setScreenState('lobby');
