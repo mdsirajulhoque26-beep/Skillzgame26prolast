@@ -69,6 +69,7 @@ export const AdminPanel: React.FC = () => {
     'dashboard' | 'matches' | 'games' | 'tournaments' | 'leaderboard' | 'results' | 'deposits' | 'withdraws' | 'users' | 'referrals' | 'disputes' | 'support' | 'settings'
   >('dashboard');
   const [blockPuzzleMatches, setBlockPuzzleMatches] = useState<any[]>([]);
+  const [blockPuzzleMatchesLoading, setBlockPuzzleMatchesLoading] = useState(false);
   const [games, setGames] = useState<any[]>([]);
   const [showGameModal, setShowGameModal] = useState(false);
   const [editingGame, setEditingGame] = useState<any | null>(null);
@@ -96,12 +97,31 @@ export const AdminPanel: React.FC = () => {
   }, []);
 
   const refreshBlockPuzzleMatches = async () => {
-    try { const data = await backendApi.adminBlockPuzzleMatches(); setBlockPuzzleMatches(data.matches || []); }
-    catch (e) { console.error('Failed to load Block Puzzle matches:', e); }
+    setBlockPuzzleMatchesLoading(true);
+    try {
+      let latestMatches: any[] = [];
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const data = await backendApi.adminBlockPuzzleMatches();
+          latestMatches = Array.isArray(data.matches) ? data.matches : [];
+          setBlockPuzzleMatches(latestMatches);
+          if (latestMatches.length > 0 || attempt === 2) break;
+        } catch (e) {
+          if (attempt === 2) console.error('Failed to load Block Puzzle matches:', e);
+        }
+        await new Promise(resolve => window.setTimeout(resolve, 500));
+      }
+    } finally {
+      setBlockPuzzleMatchesLoading(false);
+    }
   };
 
   useEffect(() => {
-    if (activeAdminTab === 'matches') refreshBlockPuzzleMatches();
+    if (activeAdminTab === 'matches') {
+      refreshBlockPuzzleMatches();
+      const timer = window.setInterval(() => refreshBlockPuzzleMatches(), 5000);
+      return () => window.clearInterval(timer);
+    }
     if (activeAdminTab === 'games') refreshGames();
     if (activeAdminTab === 'leaderboard') refreshLeaderboards();
     if (activeAdminTab === 'tournaments') refreshTournaments();
@@ -746,7 +766,11 @@ export const AdminPanel: React.FC = () => {
               <h2 className="text-base font-bold text-white flex items-center gap-2"><Gamepad2 className="w-5 h-5 text-amber-400" /> Block Puzzle Match List</h2>
               <p className="text-xs text-slate-400 mt-1">স্বয়ংক্রিয় matchmaking-এর সব ম্যাচ এখানে দেখুন। যেকোনো ম্যাচ Admin চাইলে সাথে সাথে মুছতে পারবেন।</p>
             </div>
-            {blockPuzzleMatches.length === 0 ? (
+            {blockPuzzleMatchesLoading && blockPuzzleMatches.length === 0 ? (
+              <div className="bg-[#121935] p-8 rounded-2xl border border-indigo-900/60 text-center text-sm text-amber-300">
+                ম্যাচ লোড হচ্ছে...
+              </div>
+            ) : blockPuzzleMatches.length === 0 ? (
               <div className="bg-[#121935] p-8 rounded-2xl border border-indigo-900/60 text-center text-sm text-slate-500">কোনো Block Puzzle ম্যাচ নেই।</div>
             ) : blockPuzzleMatches.map(m => (
               <div key={m.id} className="bg-[#121935] p-4 rounded-2xl border border-indigo-900/60 space-y-3">
