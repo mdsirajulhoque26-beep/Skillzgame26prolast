@@ -1857,23 +1857,60 @@ app.post('/api/matches', auth, admin, async (req, res) => {
 
 // Server-authoritative online matchmaking/join: entry fee is deducted and the seat is reserved on the server.
 app.post('/api/matches/:id/join', auth, async (req, res) => {
-  const m = req.db.matches.find(x => x.id === req.params.id);
   const ludoKingName = safeText(req.body?.ludoKingName, 100) || req.user.ludoKingName || req.user.name;
-  if (!m) return res.status(404).json({ message: 'Match not found.' });
-  if (m.status === 'cancelled' || m.status === 'completed') return res.status(400).json({ message: 'This match is no longer available.' });
-  if ((m.joinedPlayers || []).some(p => p.userId === req.user.id)) return res.status(409).json({ message: 'You already joined this match.' });
-  if ((m.joinedPlayers || []).length >= Number(m.totalSeats)) return res.status(409).json({ message: 'Seat Full.' });
-  if (Number(req.user.gamingBalance) < Number(m.entryFee)) return res.status(400).json({ message: 'Insufficient gaming balance.' });
 
-  req.user.gamingBalance = money(req.user.gamingBalance - Number(m.entryFee));
-  req.user.matchesPlayed = Number(req.user.matchesPlayed || 0) + 1;
-  const player = { userId: req.user.id, name: req.user.name, ludoKingName, phone: req.user.phone, joinedAt: now() };
-  m.joinedPlayers = [...(m.joinedPlayers || []), player];
-  m.joinedSeats = m.joinedPlayers.length;
-  m.status = m.joinedSeats >= Number(m.totalSeats) ? (m.roomCode ? 'ready_to_play' : 'waiting_room_id') : 'open';
-  req.db.transactions.unshift(makeTransaction(req.user.id, 'match_loss', -Number(m.entryFee), 'Match Entry', `Match #${m.matchNo} • Entry Fee`, 'match', { matchId: m.id }));
-  await saveDb(req.db);
-  res.json({ match: m, user: publicUser(req.user) });
+  try {
+    return await withDbLock(async () => {
+      // Reload the latest database state inside the lock so simultaneous joins
+      // cannot oversell seats or deduct the same player's balance twice.
+      const db = await loadDb();
+      const m = db.matches.find(x => x.id === req.params.id);
+      const user = db.users.find(x => x.id === req.user.id);
+
+      if (!m) return res.status(404).json({ message: 'Match not found.' });
+      if (!user || user.isBanned) return res.status(403).json({ message: 'Account unavailable' });
+      if (m.status === 'cancelled' || m.status === 'completed') return res.status(400).json({ message: 'This match is no longer available.' });
+      if ((m.joinedPlayers || []).some(p => p.userId === user.id)) return res.status(409).json({ message: 'You already joined this match.' });
+      if ((m.joinedPlayers || []).length >= Number(m.totalSeats)) return res.status(409).json({ message: 'Seat Full.' });
+      if (Number(user.gamingBalance) < Number(m.entryFee)) return res.status(400).json({ message: 'Insufficient gaming balance.' });
+
+      user.gamingBalance = money(Number(user.gamingBalance) - Number(m.entryFee));
+      user.matchesPlayed = Number(user.matchesPlayed || 0) + 1;
+
+      const player = {
+        userId: user.id,
+        name: user.name,
+        ludoKingName,
+        phone: user.phone,
+        joinedAt: now()
+      };
+
+      m.joinedPlayers = [...(m.joinedPlayers || []), player];
+      m.joinedSeats = m.joinedPlayers.length;
+      m.status = m.joinedSeats >= Number(m.totalSeats)
+        ? (m.roomCode ? 'ready_to_play' : 'waiting_room_id')
+        : 'open';
+
+      db.transactions.unshift(
+        makeTransaction(
+          user.id,
+          'match_loss',
+          -Number(m.entryFee),
+          'Match Entry',
+          `Match #${m.matchNo} • Entry Fee`,
+          'match',
+          { matchId: m.id }
+        )
+      );
+
+      await saveDb(db);
+      return res.json({ match: m, user: publicUser(user) });
+    });
+  } catch (err) {
+    return res.status(err?.statusCode || 503).json({
+      message: err?.message || 'Match join service is busy. Please try again.'
+    });
+  }
 });
 
 app.patch('/api/matches/:id/room', auth, admin, async (req, res) => {
@@ -2188,29 +2225,119 @@ app.post('/api/result-submissions', auth, async (req, res) => {
   if (!roomCode) return res.status(400).json({ message: 'Room ID is required.' });
   const match = req.db.matches.find(m => m.id === matchId || m.roomCode === roomCode || m.matchNo === matchId);
   if (!match) return res.status(404).json({ message: 'Match not found.' });
-  if (!(match.joinedPlayers || []).some(p => p.userId === req.user.id)) return res.status(403).json({ message: 'You did not join this match.' });
-  if ((req.db.resultSubmissions || []).some(s => s.matchId === match.id && s.userId === req.user.id && s.status === 'PENDING')) return res.status(409).json({ message: 'A result is already pending for this match.' });
-  const r = { id: id('res'), userId: req.user.id, userName: req.user.name, userPhone: req.user.phone, ludoKingName: req.user.ludoKingName, matchId: match.id, matchNo: match.matchNo, roomCode, imageUrl: imageUrl || undefined, prizeAmount: money(match.totalPrize), status: 'PENDING', submittedAt: now() };
-  req.db.resultSubmissions.unshift(r); await saveDbPartial(req.db, ['resultSubmissions']); res.status(201).json({ submission: r });
-});
+  if (!(match.joinedPlayers || []).some(p => p.userId app.patch('/api/result-submissions/:id', auth, admin, async (req, res) => {
+  const status = String(req.body?.status || '').toUpperCase();
+  if (!['APPROVED', 'REJECTED'].includes(status)) {
+    return res.status(400).json({ message: 'Invalid status.' });
+  }
 
-app.patch('/api/result-submissions/:id', auth, admin, async (req, res) => {
-  const r = req.db.resultSubmissions.find(x => x.id === req.params.id); if (!r) return res.status(404).json({ message: 'Submission not found' });
-  if (r.status !== 'PENDING') return res.status(409).json({ message: 'Submission already settled.' });
-  const status = String(req.body?.status || '').toUpperCase(); if (!['APPROVED', 'REJECTED'].includes(status)) return res.status(400).json({ message: 'Invalid status.' });
-  r.status = status; r.adminNote = safeText(req.body?.reason, 300);
-  if (status === 'APPROVED') {
-    const u = req.db.users.find(x => x.id === r.userId); if (!u) return res.status(404).json({ message: 'User not found' });
-    const match = req.db.matches.find(m => m.id === r.matchId);
-    if (match?.winnerId && match.winnerId !== u.id) return res.status(409).json({ message: 'This match already has a different winner.' });
-    u.winningBalance = money(u.winningBalance + Number(r.prizeAmount)); u.totalWinnings = money(Number(u.totalWinnings || 0) + Number(r.prizeAmount)); u.matchesWon = Number(u.matchesWon || 0) + 1;
-    if (r.gameType === 'block_puzzle') {
-      const bp = (req.db.blockPuzzleMatches || []).find(m => m.id === r.matchId && m.userId === u.id);
-      if (bp) { bp.status = 'COMPLETED'; bp.completedAt = now(); }
-    } else if (match) { match.status = 'completed'; match.winnerId = u.id; match.winnerName = u.name; }
-    req.db.transactions.unshift(makeTransaction(u.id, 'match_win', Number(r.prizeAmount), r.gameType === 'block_puzzle' ? 'Block Puzzle Win' : 'Match Win', r.gameType === 'block_puzzle' ? `Score: ${Number(r.score || 0)} • Admin Approved` : `Room ID: ${r.roomCode} • Admin Approved`, 'match', { matchId: r.matchId, roomCode: r.roomCode, score: r.score, gameType: r.gameType }));
-  } else if (r.gameType === 'block_puzzle') {
-    const bp = (req.db.blockPuzzleMatches || []).find(m => m.id === r.matchId && m.userId === r.userId);
+  try {
+    return await withDbLock(async () => {
+      // Reload inside the lock so two simultaneous admin approvals cannot
+      // credit the same prize twice.
+      const db = await loadDb();
+      const r = (db.resultSubmissions || []).find(x => x.id === req.params.id);
+
+      if (!r) return res.status(404).json({ message: 'Submission not found' });
+      if (r.status !== 'PENDING') {
+        return res.status(409).json({ message: 'Submission already settled.' });
+      }
+
+      r.status = status;
+      r.adminNote = safeText(req.body?.reason, 300);
+
+      if (status === 'APPROVED') {
+        const u = db.users.find(x => x.id === r.userId);
+        if (!u) return res.status(404).json({ message: 'User not found' });
+
+        const match = db.matches.find(m => m.id === r.matchId);
+        if (match?.winnerId && match.winnerId !== u.id) {
+          return res.status(409).json({ message: 'This match already has a different winner.' });
+        }
+
+        u.winningBalance = money(Number(u.winningBalance || 0) + Number(r.prizeAmount || 0));
+        u.totalWinnings = money(Number(u.totalWinnings || 0) + Number(r.prizeAmount || 0));
+        u.matchesWon = Number(u.matchesWon || 0) + 1;
+
+        if (r.gameType === 'block_puzzle') {
+          const bp = (db.blockPuzzleMatches || []).find(
+            m => m.id === r.matchId && m.userId === u.id
+          );
+
+          if (bp) {
+            bp.status = 'COMPLETED';
+            bp.completedAt = now();
+          }
+        } else if (match) {
+          match.status = 'completed';
+          match.winnerId = u.id;
+          match.winnerName = u.name;
+        }
+
+        db.transactions.unshift(
+          makeTransaction(
+            u.id,
+            'match_win',
+            Number(r.prizeAmount || 0),
+            r.gameType === 'block_puzzle' ? 'Block Puzzle Win' : 'Match Win',
+            r.gameType === 'block_puzzle'
+              ? `Score: ${Number(r.score || 0)} • Admin Approved`
+              : `Room ID: ${r.roomCode} • Admin Approved`,
+            'match',
+            {
+              matchId: r.matchId,
+              roomCode: r.roomCode,
+              score: r.score,
+              gameType: r.gameType
+            }
+          )
+        );
+      } else if (r.gameType === 'block_puzzle') {
+        const bp = (db.blockPuzzleMatches || []).find(
+          m => m.id === r.matchId && m.userId === r.userId
+        );
+
+        if (bp && bp.status === 'SUBMITTED' && !bp.refunded) {
+          const u = db.users.find(x => x.id === r.userId);
+
+          if (u) {
+            u.gamingBalance = money(
+              Number(u.gamingBalance || 0) + Number(bp.entryFee || 0)
+            );
+            bp.status = 'REFUNDED';
+            bp.refunded = true;
+            bp.refundReason = r.adminNote || 'Score rejected';
+            bp.refundedAt = now();
+
+            db.transactions.unshift(
+              makeTransaction(
+                u.id,
+                'refund',
+                Number(bp.entryFee || 0),
+                'Block Puzzle Entry Refund',
+                r.adminNote || 'Score rejected by Admin',
+                'match',
+                { matchId: bp.id, gameType: 'block_puzzle' }
+              )
+            );
+          }
+        }
+      }
+
+      await saveDb(db);
+
+      const user = db.users.find(x => x.id === r.userId);
+      return res.json({
+        submission: r,
+        user: user ? publicUser(user) : undefined
+      });
+    });
+  } catch (err) {
+    return res.status(err?.statusCode || 503).json({
+      message: err?.message || 'Result approval service is busy. Please try again.'
+    });
+  }
+});es || []).find(m => m.id === r.matchId && m.userId === r.userId);
     if (bp && bp.status === 'SUBMITTED' && !bp.refunded) {
       const u = req.db.users.find(x => x.id === r.userId);
       if (u) {
@@ -2225,10 +2352,47 @@ app.patch('/api/result-submissions/:id', auth, admin, async (req, res) => {
 
 app.post('/api/winning/transfer', auth, async (req, res) => {
   const amount = Number(req.body?.amount);
-  if (!Number.isFinite(amount) || amount <= 0 || req.user.winningBalance < amount) return res.status(400).json({ message: 'Invalid or insufficient winning balance.' });
-  req.user.winningBalance = money(req.user.winningBalance - amount); req.user.gamingBalance = money(req.user.gamingBalance + amount);
-  req.db.transactions.unshift(makeTransaction(req.user.id, 'admin_add', amount, 'Balance Transfer', 'Winning to Gaming Balance', 'admin'));
-  await saveDb(req.db); res.json({ user: publicUser(req.user) });
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).json({ message: 'Invalid or insufficient winning balance.' });
+  }
+
+  try {
+    return await withDbLock(async () => {
+      // Reload inside the lock so simultaneous transfer requests cannot
+      // spend the same winning balance twice.
+      const db = await loadDb();
+      const user = db.users.find(x => x.id === req.user.id);
+
+      if (!user || user.isBanned) {
+        return res.status(403).json({ message: 'Account unavailable' });
+      }
+
+      if (Number(user.winningBalance || 0) < amount) {
+        return res.status(400).json({ message: 'Invalid or insufficient winning balance.' });
+      }
+
+      user.winningBalance = money(Number(user.winningBalance || 0) - amount);
+      user.gamingBalance = money(Number(user.gamingBalance || 0) + amount);
+
+      db.transactions.unshift(
+        makeTransaction(
+          user.id,
+          'admin_add',
+          amount,
+          'Balance Transfer',
+          'Winning to Gaming Balance',
+          'admin'
+        )
+      );
+
+      await saveDb(db);
+      return res.json({ user: publicUser(user) });
+    });
+  } catch (err) {
+    return res.status(503).json({
+      message: err?.message || 'Transfer service is busy. Please try again.'
+    });
+  }
 });
 
 app.get('/api/referral/summary', auth, async (req, res) => {
