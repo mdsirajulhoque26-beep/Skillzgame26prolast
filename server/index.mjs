@@ -2225,7 +2225,13 @@ app.post('/api/result-submissions', auth, async (req, res) => {
   if (!roomCode) return res.status(400).json({ message: 'Room ID is required.' });
   const match = req.db.matches.find(m => m.id === matchId || m.roomCode === roomCode || m.matchNo === matchId);
   if (!match) return res.status(404).json({ message: 'Match not found.' });
-  if (!(match.joinedPlayers || []).some(p => p.userId app.patch('/api/result-submissions/:id', auth, admin, async (req, res) => {
+  if (!(match.joinedPlayers || []).some(p => p.userId === req.user.id)) return res.status(403).json({ message: 'You did not join this match.' });
+  if ((req.db.resultSubmissions || []).some(s => s.matchId === match.id && s.userId === req.user.id && s.status === 'PENDING')) return res.status(409).json({ message: 'A result is already pending for this match.' });
+  const r = { id: id('res'), userId: req.user.id, userName: req.user.name, userPhone: req.user.phone, ludoKingName: req.user.ludoKingName, matchId: match.id, matchNo: match.matchNo, roomCode, imageUrl: imageUrl || undefined, prizeAmount: money(match.totalPrize), status: 'PENDING', submittedAt: now() };
+  req.db.resultSubmissions.unshift(r); await saveDbPartial(req.db, ['resultSubmissions']); res.status(201).json({ submission: r });
+});
+
+app.patch('/api/result-submissions/:id', auth, admin, async (req, res) => {
   const status = String(req.body?.status || '').toUpperCase();
   if (!['APPROVED', 'REJECTED'].includes(status)) {
     return res.status(400).json({ message: 'Invalid status.' });
@@ -2337,17 +2343,6 @@ app.post('/api/result-submissions', auth, async (req, res) => {
       message: err?.message || 'Result approval service is busy. Please try again.'
     });
   }
-});es || []).find(m => m.id === r.matchId && m.userId === r.userId);
-    if (bp && bp.status === 'SUBMITTED' && !bp.refunded) {
-      const u = req.db.users.find(x => x.id === r.userId);
-      if (u) {
-        u.gamingBalance = money(u.gamingBalance + Number(bp.entryFee));
-        bp.status = 'REFUNDED'; bp.refunded = true; bp.refundReason = r.adminNote || 'Score rejected'; bp.refundedAt = now();
-        req.db.transactions.unshift(makeTransaction(u.id, 'refund', Number(bp.entryFee), 'Block Puzzle Entry Refund', r.adminNote || 'Score rejected by Admin', 'match', { matchId: bp.id, gameType: 'block_puzzle' }));
-      }
-    }
-  }
-  await saveDb(req.db); res.json({ submission: r, user: publicUser(req.db.users.find(x => x.id === r.userId)) });
 });
 
 app.post('/api/winning/transfer', auth, async (req, res) => {
