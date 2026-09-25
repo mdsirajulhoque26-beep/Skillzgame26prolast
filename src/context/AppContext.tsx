@@ -264,7 +264,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsLoggedIn(true);
       setIsAdminMode(Boolean(loggedInUser.isAdmin));
                         setActiveModal(null);
-      await refreshBackendState(Boolean(loggedInUser.isAdmin));
+
+      void refreshBackendState(Boolean(loggedInUser.isAdmin)).catch((error) => {
+        console.error('Background login refresh failed:', error);
+      });
+
       return { success: true };
     } catch (error: any) {
       return { success: false, message: error?.message || 'মোবাইল নম্বর অথবা পাসওয়ার্ড ভুল হয়েছে।' };
