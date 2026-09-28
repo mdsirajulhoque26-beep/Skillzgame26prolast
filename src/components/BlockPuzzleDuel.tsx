@@ -181,7 +181,7 @@ export const BlockPuzzleDuel: React.FC = () => {
       const isTournament = m.type === 'TOURNAMENT' || m.type === 'TOURNAMENT_MATCH' || m.gameType === 'block_puzzle_tournament';
       return {
         id: String(m.id), userId: String(user?.id || ''), userName: String(user?.name || ''),
-        entryFee: Number(m.entryFee || 0), prize: Number(m.prizeAmount || 0), score: Number(m.score || 0),
+        entryFee: Number(m.entryFee || 0), prize: Number(m.prizeAmount || 0), score: m.score == null ? null : Number(m.score),
         linesCleared: Number(m.linesCleared || 0), bestCombo: Number(m.bestCombo || 0),
         date: m.createdAt ? new Date(m.createdAt).toLocaleString('en-GB') : '',
         status: rawStatus === 'COMPLETED' ? outcome : isTournament ? 'TOURNAMENT' : 'PENDING',

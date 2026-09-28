@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { 
   LayoutDashboard, 
@@ -96,22 +96,19 @@ export const AdminPanel: React.FC = () => {
     refreshUsers();
   }, []);
 
+  const blockPuzzleMatchesRequest = useRef(false);
   const refreshBlockPuzzleMatches = async () => {
-    setBlockPuzzleMatchesLoading(true);
+    // Avoid overlapping list requests when an earlier response is still pending.
+    if (blockPuzzleMatchesRequest.current) return;
+    blockPuzzleMatchesRequest.current = true;
+    setBlockPuzzleMatchesLoading(prev => prev || blockPuzzleMatches.length === 0);
     try {
-      let latestMatches: any[] = [];
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        try {
-          const data = await backendApi.adminBlockPuzzleMatches();
-          latestMatches = Array.isArray(data.matches) ? data.matches : [];
-          setBlockPuzzleMatches(latestMatches);
-          if (latestMatches.length > 0 || attempt === 2) break;
-        } catch (e) {
-          if (attempt === 2) console.error('Failed to load Block Puzzle matches:', e);
-        }
-        await new Promise(resolve => window.setTimeout(resolve, 500));
-      }
+      const data = await backendApi.adminBlockPuzzleMatches();
+      setBlockPuzzleMatches(Array.isArray(data.matches) ? data.matches : []);
+    } catch (e) {
+      console.error('Failed to load Block Puzzle matches:', e);
     } finally {
+      blockPuzzleMatchesRequest.current = false;
       setBlockPuzzleMatchesLoading(false);
     }
   };
@@ -119,7 +116,7 @@ export const AdminPanel: React.FC = () => {
   useEffect(() => {
     if (activeAdminTab === 'matches') {
       refreshBlockPuzzleMatches();
-      const timer = window.setInterval(() => refreshBlockPuzzleMatches(), 5000);
+      const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void refreshBlockPuzzleMatches(); }, 5000);
       return () => window.clearInterval(timer);
     }
     if (activeAdminTab === 'games') refreshGames();
@@ -129,7 +126,7 @@ export const AdminPanel: React.FC = () => {
     if (activeAdminTab === 'disputes') refreshDisputes();
     if (activeAdminTab === 'support') {
       refreshSupportChats();
-      const timer = window.setInterval(() => refreshSupportChats(), 4000);
+      const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void refreshSupportChats(); }, 4000);
       return () => window.clearInterval(timer);
     }
   }, [activeAdminTab]);
