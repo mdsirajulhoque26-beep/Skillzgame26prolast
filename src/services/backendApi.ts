@@ -102,4 +102,9 @@ export const backendApi = {
   adminReferrals: () => request<{ settings: any; referrals: any[] }>('/admin/referrals'),
   approveAdminReferral: (id: string) => request<{ referral: any; user?: any }>(`/admin/referrals/${encodeURIComponent(id)}/approve`, { method: 'POST' }),
   rejectAdminReferral: (id: string, reason = '') => request<{ referral: any }>(`/admin/referrals/${encodeURIComponent(id)}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  chakaState: () => request<{ round: any; userBets: Record<number, number>; livePoolBySlot: Record<number, { amount: number; count: number }>; history: any[]; user?: any }>('/chaka/state'),
+  chakaPlaceBet: (slotId: number, amount: number, betId: string) => request<{ ok: boolean; user?: any; bet?: any }>('/chaka/bets', { method: 'POST', body: JSON.stringify({ slotId, amount, betId }) }),
+  chakaClearBets: (operationId: string) => request<{ ok: boolean; user?: any }>('/chaka/bets/clear', { method: 'POST', body: JSON.stringify({ operationId }) }),
+  chakaDoubleBets: (operationId: string) => request<{ ok: boolean; user?: any }>('/chaka/bets/double', { method: 'POST', body: JSON.stringify({ operationId }) }),
+
 };

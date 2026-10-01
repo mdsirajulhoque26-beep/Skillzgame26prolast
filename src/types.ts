@@ -9,6 +9,7 @@ export type TabType =
   | 'nut_sort'
   | 'pool'
   | 'carrom'
+  | 'chaka_live_spin'
   | 'admin';
 
 export type MatchCategory = 'special' | 'time' | 'one_player';

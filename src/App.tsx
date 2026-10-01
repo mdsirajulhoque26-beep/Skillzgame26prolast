@@ -10,6 +10,7 @@ import { HistoryScreen } from './components/HistoryScreen';
 import { ProfileScreen } from './components/ProfileScreen';
 import { BlockPuzzleDuel } from './components/BlockPuzzleDuel';
 import { NutSortDuel } from './components/NutSortDuel';
+import { ChakaLiveSpin } from './components/ChakaLiveSpin';
 import { AdminPanel } from './components/AdminPanel';
 import { ArcadeOnlineGame } from './components/ArcadeOnlineGame';
 
@@ -52,6 +53,7 @@ const MainLayout: React.FC = () => {
         {currentTab === 'nut_sort' && <NutSortDuel />}
         {currentTab === 'pool' && <ArcadeOnlineGame gameType="pool" />}
         {currentTab === 'carrom' && <ArcadeOnlineGame gameType="carrom" />}
+        {currentTab === 'chaka_live_spin' && <ChakaLiveSpin />}
       </main>
 
       {/* Bottom Sticky Navigation */}

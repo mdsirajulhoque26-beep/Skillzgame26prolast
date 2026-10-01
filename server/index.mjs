@@ -2592,6 +2592,331 @@ app.post('/api/arcade/matches/:id/finish', auth, async (req,res)=>{
     res.json({match: publicArcadeMatch(result.match, result.db, req.user.id), user: publicUser(result.db.users.find(u=>u.id===req.user.id))});
   } catch(e) { res.status(e?.statusCode || 500).json({message:e?.message || 'Could not finish match.'}); }
 });
+
+function advanceChakaRound(db) {
+  db.chakaSettings ||= { roundDurationSeconds: 25, minBet: 10, maxBet: 5000, multiplier: 5.5 };
+  db.chakaBets ||= [];
+  db.chakaHistory ||= [];
+  db.chakaRound ||= {
+    number: 1,
+    status: 'OPEN',
+    winningSlot: null,
+    endsAt: Date.now() + Number(db.chakaSettings.roundDurationSeconds || 25) * 1000,
+    spinningUntil: null
+  };
+
+  const round = db.chakaRound;
+  const current = Date.now();
+  const duration = Math.max(5, Number(db.chakaSettings.roundDurationSeconds || 25)) * 1000;
+
+  if (round.status === 'OPEN' && current >= Number(round.endsAt || 0)) {
+    const winningSlot = Math.floor(Math.random() * 6) + 1;
+    const roundBets = db.chakaBets.filter(b => Number(b.round) === Number(round.number) && b.status === 'OPEN');
+
+    for (const bet of roundBets) {
+      const user = db.users.find(u => u.id === bet.userId);
+      if (!user) continue;
+
+      if (Number(bet.slotId) === winningSlot) {
+        const payout = money(Number(bet.amount) * Number(db.chakaSettings.multiplier || 5.5));
+        user.winningBalance = money(Number(user.winningBalance || 0) + payout);
+        user.totalWinnings = money(Number(user.totalWinnings || 0) + payout);
+        bet.status = 'WON';
+        bet.payout = payout;
+        bet.settledAt = now();
+
+        db.transactions.unshift(makeTransaction(
+          user.id,
+          'game_win',
+          payout,
+          'Chaka Live Spin Prize',
+          `Round #${round.number} • Slot ${winningSlot}`,
+          'game',
+          { gameType: 'chaka_live_spin', round: round.number, betId: bet.id, slotId: winningSlot }
+        ));
+      } else {
+        bet.status = 'LOST';
+        bet.payout = 0;
+        bet.settledAt = now();
+      }
+    }
+
+    db.chakaHistory.unshift({
+      round: Number(round.number),
+      winningSlot,
+      totalBets: roundBets.length,
+      totalAmount: money(roundBets.reduce((sum, b) => sum + Number(b.amount || 0), 0)),
+      createdAt: now()
+    });
+    db.chakaHistory = db.chakaHistory.slice(0, 30);
+
+    round.status = 'SPINNING';
+    round.winningSlot = winningSlot;
+    round.spinningUntil = current + 8500;
+    round.endsAt = null;
+  }
+
+  if (round.status === 'SPINNING' && current >= Number(round.spinningUntil || 0)) {
+    round.number = Number(round.number || 0) + 1;
+    round.status = 'OPEN';
+    round.winningSlot = null;
+    round.spinningUntil = null;
+    round.endsAt = current + duration;
+  }
+
+  return round;
+}
+
+function publicChakaState(db, userId) {
+  const round = advanceChakaRound(db);
+  const userBets = {};
+  const livePoolBySlot = {};
+
+  for (const bet of db.chakaBets || []) {
+    if (Number(bet.round) !== Number(round.number) || bet.status !== 'OPEN') continue;
+    const slot = Number(bet.slotId);
+    const amount = Number(bet.amount || 0);
+
+    if (bet.userId === userId) userBets[slot] = money(Number(userBets[slot] || 0) + amount);
+
+    if (!livePoolBySlot[slot]) livePoolBySlot[slot] = { amount: 0, count: 0 };
+    livePoolBySlot[slot].amount = money(Number(livePoolBySlot[slot].amount) + amount);
+    livePoolBySlot[slot].count += 1;
+  }
+
+  return {
+    round: {
+      number: Number(round.number),
+      status: round.status,
+      winningSlot: round.winningSlot ?? null,
+      endsAt: round.endsAt ?? null,
+      spinningUntil: round.spinningUntil ?? null
+    },
+    userBets,
+    livePoolBySlot,
+    history: (db.chakaHistory || []).slice(0, 10),
+    user: publicUser(db.users.find(u => u.id === userId))
+  };
+}
+
+app.get('/api/chaka/state', auth, async (req, res) => {
+  try {
+    const result = await withDbLock(async () => {
+      const db = await loadDb();
+      advanceChakaRound(db);
+      await saveDb(db);
+      return publicChakaState(db, req.user.id);
+    });
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ message: e?.message || 'Could not load Chaka state.' });
+  }
+});
+
+app.post('/api/chaka/bets', auth, async (req, res) => {
+  try {
+    const slotId = Number(req.body?.slotId);
+    const amount = money(Number(req.body?.amount));
+    const betId = safeText(req.body?.betId, 120);
+
+    if (!Number.isInteger(slotId) || slotId < 1 || slotId > 6) {
+      return res.status(400).json({ message: 'Invalid Chaka slot.' });
+    }
+
+    if (!betId) return res.status(400).json({ message: 'Bet ID is required.' });
+
+    const result = await withDbLock(async () => {
+      const db = await loadDb();
+      const settings = db.chakaSettings || {};
+      advanceChakaRound(db);
+
+      const game = (db.games || []).find(g => g.gameType === 'chaka_live_spin' && g.active !== false);
+      if (!game) throw Object.assign(new Error('এই গেমটি বর্তমানে চালু নেই।'), { statusCode: 400 });
+
+      if (db.chakaRound.status !== 'OPEN') {
+        throw Object.assign(new Error('Betting is closed for this round.'), { statusCode: 409 });
+      }
+
+      if (!Number.isFinite(amount) ||
+          amount < Number(settings.minBet || 10) ||
+          amount > Number(settings.maxBet || 5000)) {
+        throw Object.assign(new Error(`Bet must be between ${settings.minBet || 10} and ${settings.maxBet || 5000}.`), { statusCode: 400 });
+      }
+
+      const duplicate = (db.chakaBets || []).find(b => b.id === betId);
+      if (duplicate) {
+        return {
+          db,
+          user: db.users.find(u => u.id === req.user.id),
+          bet: duplicate,
+          duplicate: true
+        };
+      }
+
+      const user = db.users.find(u => u.id === req.user.id);
+      if (!user) throw Object.assign(new Error('User not found.'), { statusCode: 404 });
+
+      if (Number(user.gamingBalance || 0) < amount) {
+        throw Object.assign(new Error('Insufficient gaming balance.'), { statusCode: 400 });
+      }
+
+      user.gamingBalance = money(Number(user.gamingBalance || 0) - amount);
+
+      const bet = {
+        id: betId,
+        userId: user.id,
+        userName: user.name,
+        round: Number(db.chakaRound.number),
+        slotId,
+        amount,
+        status: 'OPEN',
+        createdAt: now()
+      };
+
+      db.chakaBets.unshift(bet);
+      db.transactions.unshift(makeTransaction(
+        user.id,
+        'game_entry',
+        -amount,
+        'Chaka Live Spin Bet',
+        `Round #${db.chakaRound.number} • Slot ${slotId}`,
+        'game',
+        { gameType: 'chaka_live_spin', round: db.chakaRound.number, betId, slotId }
+      ));
+
+      await saveDb(db);
+      return { db, user, bet, duplicate: false };
+    });
+
+    res.json({
+      ok: true,
+      user: publicUser(result.user),
+      bet: result.bet
+    });
+  } catch (e) {
+    res.status(e?.statusCode || 500).json({ message: e?.message || 'Could not place bet.' });
+  }
+});
+
+app.post('/api/chaka/bets/clear', auth, async (req, res) => {
+  try {
+    const operationId = safeText(req.body?.operationId, 120) || id('chaka_clear');
+
+    const result = await withDbLock(async () => {
+      const db = await loadDb();
+      advanceChakaRound(db);
+
+      const user = db.users.find(u => u.id === req.user.id);
+      if (!user) throw Object.assign(new Error('User not found.'), { statusCode: 404 });
+
+      if (db.chakaRound.status !== 'OPEN') {
+        throw Object.assign(new Error('Betting is closed for this round.'), { statusCode: 409 });
+      }
+
+      const bets = (db.chakaBets || []).filter(
+        b => b.userId === user.id &&
+             Number(b.round) === Number(db.chakaRound.number) &&
+             b.status === 'OPEN'
+      );
+
+      let refund = 0;
+      for (const bet of bets) {
+        bet.status = 'REFUNDED';
+        bet.refundedAt = now();
+        refund += Number(bet.amount || 0);
+      }
+
+      refund = money(refund);
+
+      if (refund > 0) {
+        user.gamingBalance = money(Number(user.gamingBalance || 0) + refund);
+        db.transactions.unshift(makeTransaction(
+          user.id,
+          'game_refund',
+          refund,
+          'Chaka Live Spin Refund',
+          `Round #${db.chakaRound.number}`,
+          'game',
+          { gameType: 'chaka_live_spin', round: db.chakaRound.number, operationId }
+        ));
+        await saveDb(db);
+      }
+
+      return { user, refund };
+    });
+
+    res.json({ ok: true, user: publicUser(result.user), refund: result.refund });
+  } catch (e) {
+    res.status(e?.statusCode || 500).json({ message: e?.message || 'Could not clear bets.' });
+  }
+});
+
+app.post('/api/chaka/bets/double', auth, async (req, res) => {
+  try {
+    const operationId = safeText(req.body?.operationId, 120) || id('chaka_double');
+
+    const result = await withDbLock(async () => {
+      const db = await loadDb();
+      advanceChakaRound(db);
+
+      const user = db.users.find(u => u.id === req.user.id);
+      if (!user) throw Object.assign(new Error('User not found.'), { statusCode: 404 });
+
+      if (db.chakaRound.status !== 'OPEN') {
+        throw Object.assign(new Error('Betting is closed for this round.'), { statusCode: 409 });
+      }
+
+      const bets = (db.chakaBets || []).filter(
+        b => b.userId === user.id &&
+             Number(b.round) === Number(db.chakaRound.number) &&
+             b.status === 'OPEN'
+      );
+
+      const extra = money(bets.reduce((sum, b) => sum + Number(b.amount || 0), 0));
+
+      if (extra <= 0) {
+        throw Object.assign(new Error('No active bets to double.'), { statusCode: 400 });
+      }
+
+      if (Number(user.gamingBalance || 0) < extra) {
+        throw Object.assign(new Error('Insufficient gaming balance.'), { statusCode: 400 });
+      }
+
+      user.gamingBalance = money(Number(user.gamingBalance || 0) - extra);
+
+      for (const bet of bets) {
+        const newBet = {
+          ...bet,
+          id: id('chaka_bet'),
+          amount: money(Number(bet.amount || 0)),
+          createdAt: now(),
+          doubledFrom: bet.id,
+          operationId
+        };
+        db.chakaBets.unshift(newBet);
+
+        db.transactions.unshift(makeTransaction(
+          user.id,
+          'game_entry',
+          -newBet.amount,
+          'Chaka Live Spin Bet 2x',
+          `Round #${db.chakaRound.number} • Slot ${newBet.slotId}`,
+          'game',
+          { gameType: 'chaka_live_spin', round: db.chakaRound.number, betId: newBet.id, slotId: newBet.slotId, operationId }
+        ));
+      }
+
+      await saveDb(db);
+      return { user, extra };
+    });
+
+    res.json({ ok: true, user: publicUser(result.user), amount: result.extra });
+  } catch (e) {
+    res.status(e?.statusCode || 500).json({ message: e?.message || 'Could not double bets.' });
+  }
+});
+
+
 export default app;
 if (process.env.VERCEL !== '1' && process.env.LIVE_SERVER !== '1') {
   // Background safety net for Time Mode tournaments. Requests also trigger

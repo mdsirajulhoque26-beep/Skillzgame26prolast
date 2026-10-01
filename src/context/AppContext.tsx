@@ -21,6 +21,7 @@ interface AppContextType {
   login: (phone: string, pass: string) => Promise<{ success: boolean; message?: string }>;
   register: (name: string, phone: string, pass: string, refCode?: string) => Promise<{ success: boolean; message?: string }>;
   refreshUsers: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   logout: () => void;
   currentTab: TabType;
   setCurrentTab: (tab: TabType) => void;
@@ -186,6 +187,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return mapped;
   };
 
+  const refreshUser = async () => { try { const data = await backendApi.me(); if (data.user) applyApiUser(data.user); } catch {} };
   const refreshUsers = async () => {
     try {
       const [users, deps, wds, results, matchData] = await Promise.all([
@@ -544,7 +546,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isAdminMode,
         setIsAdminMode,
         registeredUsers,
-        refreshUsers,
+        refreshUsers, refreshUser,
         depositRequests,
         withdrawRequests,
         resultSubmissions,
