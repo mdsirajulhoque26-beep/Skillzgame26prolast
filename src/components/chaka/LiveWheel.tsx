@@ -291,20 +291,49 @@ export const LiveWheel: React.FC<LiveWheelProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    const size = Math.min(rect.width, rect.height) || 280;
+    let resizeObserver: ResizeObserver | null = null;
 
-    canvas.width = size * dpr;
-    canvas.height = size * dpr;
+    const renderWheel = () => {
+      const rect = canvas.getBoundingClientRect();
+      const size = Math.min(rect.width, rect.height);
 
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.scale(dpr, dpr);
-      drawWheel(ctx, size, size, rotationRef.current, 0, false);
+      if (!size || size < 10) return;
+
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(size * dpr);
+      canvas.height = Math.round(size * dpr);
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      drawWheel(
+        ctx,
+        size,
+        size,
+        rotationRef.current,
+        pointerDeflectionRef.current,
+        isSpinningLocal
+      );
+    };
+
+    renderWheel();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(renderWheel);
+      resizeObserver.observe(canvas);
+    } else {
+      window.addEventListener('resize', renderWheel);
     }
-  }, [lang]);
 
+    const frameId = requestAnimationFrame(renderWheel);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', renderWheel);
+    };
+  }, [lang, isSpinningLocal]);
   useEffect(() => {
     if (gameStatus === 'SPINNING' && targetSlotId !== null && !isSpinningLocal) {
       setIsSpinningLocal(true);

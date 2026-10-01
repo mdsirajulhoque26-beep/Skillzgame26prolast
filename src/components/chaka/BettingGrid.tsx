@@ -115,26 +115,29 @@ export const BettingGrid: React.FC<BettingGridProps> = ({
               </div>
 
               <div className="relative z-10 w-full flex items-center justify-between text-[10px] pt-1 border-t border-slate-800/80 mt-auto">
-                {myBet > 0 ? (
-                  <div className="flex items-center justify-between w-full font-bold">
-                    <span className="text-amber-300">
-                      {lang === 'bn' ? 'বাজি: ' : 'Bet: '}
-                      <span className="text-white font-mono">৳{myBet}</span>
-                    </span>
-                    <span className="text-emerald-400 font-mono text-[9px]">
-                      +৳{potentialWin}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between w-full text-slate-400">
-                    <span className="font-mono tabular-nums text-slate-300">
-                      ৳{poolData.amount >= 1000 ? `${(poolData.amount / 1000).toFixed(0)}k` : poolData.amount}
+                <div className="w-full">
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-slate-300 font-mono tabular-nums text-[9px]">
+                      {lang === 'bn' ? 'মোট: ' : 'Total: '}
+                      ৳{poolData.amount >= 1000 ? `${(poolData.amount / 1000).toFixed(1)}k` : poolData.amount}
                     </span>
                     <span className="text-slate-500 text-[9px]">
-                      {isBettingOpen ? (lang === 'bn' ? '+ বাজি' : '+ Bet') : (lang === 'bn' ? 'বন্ধ' : 'Closed')}
+                      {poolData.count} {lang === 'bn' ? 'বাজি' : 'bets'}
                     </span>
                   </div>
-                )}
+
+                  {myBet > 0 && (
+                    <div className="flex items-center justify-between w-full font-bold mt-0.5">
+                      <span className="text-amber-300 text-[9px]">
+                        {lang === 'bn' ? 'আপনার: ' : 'Your: '}
+                        <span className="text-white font-mono">৳{myBet}</span>
+                      </span>
+                      <span className="text-emerald-400 font-mono text-[9px]">
+                        +৳{potentialWin}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
             </button>
           );
