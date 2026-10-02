@@ -1564,7 +1564,7 @@ export const BlockPuzzleDuel: React.FC = () => {
           {/* Floating Drag Piece above touch pointer */}
           {dragPointer && activePiece && (
             <div
-              className="fixed pointer-events-none z-50 opacity-95 scale-110 drop-shadow-2xl"
+              className="fixed pointer-events-none z-50 opacity-95 drop-shadow-2xl"
               style={{
                 left: `${dragPointer.x}px`,
                 top: `${dragPointer.y}px`,
