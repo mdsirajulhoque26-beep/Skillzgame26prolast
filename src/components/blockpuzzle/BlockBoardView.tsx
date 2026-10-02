@@ -111,15 +111,15 @@ export const BlockBoardView: React.FC<BlockBoardViewProps> = ({
         <div
           ref={gridRef}
           id="block-puzzle-grid"
-          className="block-puzzle-grid grid grid-cols-10 gap-1.5 aspect-square bg-[#050816] p-1.5 rounded-xl border border-[#141d40] touch-none relative overflow-hidden"
+          className="block-puzzle-grid grid grid-cols-8 gap-1.5 aspect-square bg-[#050816] p-1.5 rounded-xl border border-[#141d40] touch-none relative overflow-hidden"
           onMouseLeave={onMouseLeave}
         >
           {/* Row Clearing Power Bolt / Lightning Glow Line Overlays */}
           {clearingRows.map((r) => (
             <div
               key={`clear-row-${r}`}
-              className="absolute left-0 right-0 z-20 h-[10%] bg-gradient-to-r from-transparent via-cyan-300 to-transparent animate-pulse pointer-events-none opacity-90 shadow-lg shadow-cyan-400"
-              style={{ top: `${r * 10}%` }}
+              className="absolute left-0 right-0 z-20 h-[12.5%] bg-gradient-to-r from-transparent via-cyan-300 to-transparent animate-pulse pointer-events-none opacity-90 shadow-lg shadow-cyan-400"
+              style={{ top: `${r * 12.5}%` }}
             />
           ))}
 
@@ -127,8 +127,8 @@ export const BlockBoardView: React.FC<BlockBoardViewProps> = ({
           {clearingCols.map((c) => (
             <div
               key={`clear-col-${c}`}
-              className="absolute top-0 bottom-0 z-20 w-[10%] bg-gradient-to-b from-transparent via-cyan-300 to-transparent animate-pulse pointer-events-none opacity-90 shadow-lg shadow-cyan-400"
-              style={{ left: `${c * 10}%` }}
+              className="absolute top-0 bottom-0 z-20 w-[12.5%] bg-gradient-to-b from-transparent via-cyan-300 to-transparent animate-pulse pointer-events-none opacity-90 shadow-lg shadow-cyan-400"
+              style={{ left: `${c * 12.5}%` }}
             />
           ))}
 

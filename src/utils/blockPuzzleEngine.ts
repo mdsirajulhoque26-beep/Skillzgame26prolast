@@ -3,7 +3,7 @@
 
 import { BlockShape, SpecialBlockType, PracticeDifficulty } from '../types';
 
-export const BOARD_SIZE = 10;
+export const BOARD_SIZE = 8;
 
 // All authentic block puzzle shapes with high-contrast arcade color palette (Pink, Green, Yellow, Orange, Purple, Cyan, Red)
 export const BLOCK_SHAPES_CATALOG: Omit<BlockShape, 'id'>[] = [
