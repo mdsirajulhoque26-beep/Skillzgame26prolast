@@ -1028,7 +1028,7 @@ export const BlockPuzzleDuel: React.FC = () => {
     // Placement is calculated from that SAME visual center, not from the finger,
     // so the block lands exactly where the player sees it.
     const ghostX = clientX;
-    const ghostY = clientY - 75;
+    const ghostY = clientY - 120;
     setDragPointer({ x: ghostX, y: ghostY });
 
     const rect = gridRef.current.getBoundingClientRect();
