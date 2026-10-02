@@ -466,6 +466,7 @@ export const BlockPuzzleDuel: React.FC = () => {
 
   // Drag floating piece coordinate state
   const [dragPointer, setDragPointer] = useState<{ x: number; y: number } | null>(null);
+  const [dragCellSize, setDragCellSize] = useState(24);
   const dragRafRef = useRef<number | null>(null);
   const dragLatestRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -1044,6 +1045,7 @@ export const BlockPuzzleDuel: React.FC = () => {
     // from drifting left/right or up/down on release.
     const cellW = firstRect?.width || rect.width / BOARD_SIZE;
     const cellH = firstRect?.height || rect.height / BOARD_SIZE;
+    setDragCellSize(Math.max(1, Math.min(cellW, cellH)));
     const pitchX = secondRect && firstRect ? secondRect.left - firstRect.left : cellW;
     const pitchY = rowOneRect && firstRect ? rowOneRect.top - firstRect.top : cellH;
     const firstCenterX = firstRect ? firstRect.left + firstRect.width / 2 : rect.left + cellW / 2;
@@ -1577,10 +1579,12 @@ export const BlockPuzzleDuel: React.FC = () => {
                     {row.map((cell, c) => (
                       <div
                         key={c}
-                        className={`w-6 h-6 rounded-[4px] border-t border-l border-white/50 border-b-2 border-r-2 border-black/50 ${
+                        className={`rounded-[4px] border-t border-l border-white/50 border-b-2 border-r-2 border-black/50 ${
                           cell !== 0 ? '' : 'opacity-0'
                         }`}
                         style={{
+                          width: `${dragCellSize}px`,
+                          height: `${dragCellSize}px`,
                           backgroundColor: cell !== 0 ? activePiece.color : 'transparent',
                           borderColor: cell !== 0 ? activePiece.accentColor : 'transparent',
                         }}
