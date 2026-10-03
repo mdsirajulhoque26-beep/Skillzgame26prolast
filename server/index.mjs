@@ -1058,6 +1058,62 @@ app.patch('/api/admin/match-disputes/:id', auth, admin, async (req, res) => {
   } catch (err) { res.status(503).json({ message: err?.message || 'Complaint update করা যায়নি।' }); }
 });
 
+
+app.delete('/api/admin/match-disputes/:id', auth, admin, async (req, res) => {
+  try {
+    const deleted = await withDbLock(async () => {
+      const db = await loadDb();
+      const disputes = Array.isArray(db.matchDisputes) ? db.matchDisputes : [];
+      const before = disputes.length;
+
+      db.matchDisputes = disputes.filter(
+        d => String(d.id) !== String(req.params.id)
+      );
+
+      const count = before - db.matchDisputes.length;
+
+      if (count > 0) {
+        await saveDbPartial(db, ['matchDisputes']);
+      }
+
+      return count;
+    });
+
+    if (!deleted) {
+      return res.status(404).json({ message: 'Complaint পাওয়া যায়নি।' });
+    }
+
+    res.json({ ok: true, deleted });
+  } catch (err) {
+    res.status(503).json({
+      message: err?.message || 'Complaint delete করা যায়নি।'
+    });
+  }
+});
+
+app.delete('/api/admin/match-disputes', auth, admin, async (req, res) => {
+  try {
+    const deleted = await withDbLock(async () => {
+      const db = await loadDb();
+      const disputes = Array.isArray(db.matchDisputes) ? db.matchDisputes : [];
+      const count = disputes.length;
+
+      if (count > 0) {
+        db.matchDisputes = [];
+        await saveDbPartial(db, ['matchDisputes']);
+      }
+
+      return count;
+    });
+
+    res.json({ ok: true, deleted });
+  } catch (err) {
+    res.status(503).json({
+      message: err?.message || 'সব Complaint delete করা যায়নি।'
+    });
+  }
+});
+
 app.post('/api/support-chat/password-reset-request', authRateLimit, async (req, res) => {
   try {
     const phone = safeText(req.body?.phone, 40).trim();
@@ -2473,6 +2529,62 @@ app.post('/api/admin/referrals/:id/reject', auth, admin, async (req, res) => {
       return res.json({ referral: record });
     });
   } catch (err) { res.status(err.statusCode || 503).json({ message: err?.message || 'Referral reject করা যায়নি।' }); }
+});
+
+
+app.delete('/api/admin/referrals/:id', auth, admin, async (req, res) => {
+  try {
+    const deleted = await withDbLock(async () => {
+      const db = await loadDb();
+      const referrals = Array.isArray(db.referrals) ? db.referrals : [];
+      const before = referrals.length;
+
+      db.referrals = referrals.filter(
+        r => String(r.id) !== String(req.params.id)
+      );
+
+      const count = before - db.referrals.length;
+
+      if (count > 0) {
+        await saveDbPartial(db, ['referrals']);
+      }
+
+      return count;
+    });
+
+    if (!deleted) {
+      return res.status(404).json({ message: 'Referral request not found.' });
+    }
+
+    res.json({ ok: true, deleted });
+  } catch (err) {
+    res.status(503).json({
+      message: err?.message || 'Referral delete করা যায়নি।'
+    });
+  }
+});
+
+app.delete('/api/admin/referrals', auth, admin, async (req, res) => {
+  try {
+    const deleted = await withDbLock(async () => {
+      const db = await loadDb();
+      const referrals = Array.isArray(db.referrals) ? db.referrals : [];
+      const count = referrals.length;
+
+      if (count > 0) {
+        db.referrals = [];
+        await saveDbPartial(db, ['referrals']);
+      }
+
+      return count;
+    });
+
+    res.json({ ok: true, deleted });
+  } catch (err) {
+    res.status(503).json({
+      message: err?.message || 'সব Referral delete করা যায়নি।'
+    });
+  }
 });
 
 app.get('/api/settings', auth, (req, res) => res.json({ paymentSettings: req.db.paymentSettings, referralSettings: referralSettings(req.db) }));

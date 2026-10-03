@@ -92,6 +92,8 @@ export const AdminPanel: React.FC = () => {
   const [supportReply, setSupportReply] = useState('');
   const [supportSending, setSupportSending] = useState(false);
   const [supportDeleting, setSupportDeleting] = useState(false);
+  const [referralDeleting, setReferralDeleting] = useState(false);
+  const [disputeDeleting, setDisputeDeleting] = useState(false);
 
   useEffect(() => {
     refreshUsers();
@@ -209,8 +211,71 @@ export const AdminPanel: React.FC = () => {
     }
   };
   const updateDispute = async (d:any, status:'RESOLVED'|'REJECTED') => { const note = window.prompt(status === 'RESOLVED' ? 'Resolution note (optional):' : 'Reject reason (optional):', d.adminNote || '') ?? ''; try { await backendApi.updateMatchDispute(d.id, status, note); await refreshDisputes(); showToast(status === 'RESOLVED' ? 'Complaint resolved হয়েছে।' : 'Complaint rejected হয়েছে।'); } catch (e:any) { showToast(e?.message || 'Complaint update করা যায়নি।', 'error'); } };
+  const deleteMatchDispute = async (d:any) => {
+    if (!window.confirm(`“${d.playerName || 'Player'} vs ${d.opponentName || 'Opponent'}” এই Match Complaint record-টি ডিলিট করবেন?\n\nএই কাজটি আর Undo করা যাবে না।`)) return;
+    try {
+      setDisputeDeleting(true);
+      await backendApi.adminDeleteMatchDispute(d.id);
+      await refreshDisputes();
+      showToast('Match Complaint ডিলিট করা হয়েছে।');
+    } catch (e:any) {
+      showToast(e?.message || 'Match Complaint ডিলিট করা যায়নি।', 'error');
+    } finally {
+      setDisputeDeleting(false);
+    }
+  };
+
+  const deleteAllMatchDisputes = async () => {
+    if (!disputes.length) {
+      showToast('ডিলিট করার মতো কোনো Match Complaint নেই।', 'error');
+      return;
+    }
+    if (!window.confirm(`সব ${disputes.length}টি Match Complaint record ডিলিট করবেন?\n\nএই কাজটি আর Undo করা যাবে না।`)) return;
+    try {
+      setDisputeDeleting(true);
+      const res = await backendApi.adminDeleteAllMatchDisputes();
+      await refreshDisputes();
+      showToast(`${res.deleted}টি Match Complaint ডিলিট করা হয়েছে।`);
+    } catch (e:any) {
+      showToast(e?.message || 'সব Match Complaint ডিলিট করা যায়নি।', 'error');
+    } finally {
+      setDisputeDeleting(false);
+    }
+  };
+
   const approveReferral = async (r:any) => { try { await backendApi.approveAdminReferral(r.id); await refreshReferrals(); showToast('Referral bonus অনুমোদন হয়েছে।'); } catch (e:any) { showToast(e?.message || 'Referral approve করা যায়নি।', 'error'); } };
   const rejectReferral = async (r:any) => { const reason = window.prompt('Reject করার কারণ (ঐচ্ছিক):', '') ?? ''; try { await backendApi.rejectAdminReferral(r.id, reason); await refreshReferrals(); showToast('Referral reject করা হয়েছে।'); } catch (e:any) { showToast(e?.message || 'Referral reject করা যায়নি।', 'error'); } };
+const deleteReferral = async (r:any) => {
+  if (!window.confirm(`“${r.referrerName || 'Referral'} → ${r.referredUserName || ''}” এই Referral record-টি ডিলিট করবেন?\n\nএই কাজটি আর Undo করা যাবে না।`)) return;
+  try {
+    setReferralDeleting(true);
+    await backendApi.adminDeleteReferral(r.id);
+    await refreshReferrals();
+    showToast('Referral ডিলিট করা হয়েছে।');
+  } catch (e:any) {
+    showToast(e?.message || 'Referral ডিলিট করা যায়নি।', 'error');
+  } finally {
+    setReferralDeleting(false);
+  }
+};
+
+const deleteAllReferrals = async () => {
+  if (!referrals.length) {
+    showToast('ডিলিট করার মতো কোনো Referral নেই।', 'error');
+    return;
+  }
+  if (!window.confirm(`সব ${referrals.length}টি Referral record ডিলিট করবেন?\n\nএই কাজটি আর Undo করা যাবে না।`)) return;
+  try {
+    setReferralDeleting(true);
+    const res = await backendApi.adminDeleteAllReferrals();
+    await refreshReferrals();
+    showToast(`${res.deleted}টি Referral ডিলিট করা হয়েছে।`);
+  } catch (e:any) {
+    showToast(e?.message || 'সব Referral ডিলিট করা যায়নি।', 'error');
+  } finally {
+    setReferralDeleting(false);
+  }
+};
   const openNewTournament = () => { setEditingTournament(null); setTournamentForm({...emptyTournament}); setShowTournamentModal(true); };
   const openEditTournament = (t:any) => { setEditingTournament(t); setTournamentForm({...emptyTournament,...t,active:t.status==='ACTIVE'}); setShowTournamentModal(true); };
   const addTournamentPrize = () => setTournamentForm((f:any) => ({...f, prizes:[...(f.prizes||[]), 0]}));
@@ -1025,9 +1090,21 @@ export const AdminPanel: React.FC = () => {
         {/* ================= 3. RESULT VERIFICATION TAB ================= */}
         {activeAdminTab === 'disputes' && (
           <div className="space-y-4 max-w-5xl">
-            <div className="bg-[#121935] p-4 rounded-2xl border border-red-500/20">
-              <h2 className="text-base font-black text-white flex items-center gap-2"><MessageSquareWarning className="w-5 h-5 text-red-300" /> Match Disputes / অভিযোগ</h2>
-              <p className="text-xs text-slate-400 mt-1">Player-এর technical/network complaint এখানে দেখুন। Server record ও match data যাচাই করে সিদ্ধান্ত নিন।</p>
+            <div className="bg-[#121935] p-4 rounded-2xl border border-red-500/20 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="text-base font-black text-white flex items-center gap-2"><MessageSquareWarning className="w-5 h-5 text-red-300" /> Match Disputes / অভিযোগ</h2>
+                <p className="text-xs text-slate-400 mt-1">Player-এর technical/network complaint এখানে দেখুন। Server record ও match data যাচাই করে সিদ্ধান্ত নিন।</p>
+              </div>
+              <button
+                type="button"
+                onClick={deleteAllMatchDisputes}
+                disabled={disputeDeleting || disputes.length === 0}
+                className="shrink-0 px-3 py-2 rounded-xl bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800 text-[10px] font-black disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+                title="সব Match Complaint Delete"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {disputeDeleting ? 'ডিলিট হচ্ছে...' : 'সব ডিলিট'}
+              </button>
             </div>
             {disputes.length === 0 ? (
               <div className="bg-[#121935] p-8 rounded-2xl border border-indigo-900/60 text-center text-sm text-slate-500">কোনো Match complaint নেই।</div>
@@ -1035,7 +1112,18 @@ export const AdminPanel: React.FC = () => {
               <div key={d.id} className="bg-[#121935] p-4 rounded-2xl border border-indigo-900/60 space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div><div className="font-black text-white text-sm">{d.playerName} <span className="text-slate-500 font-normal">vs</span> {d.opponentName}</div><div className="text-[10px] text-slate-500 mt-1">Match #{String(d.matchId).slice(-8)} • {new Date(d.createdAt).toLocaleString('en-GB')}</div></div>
-                  <span className={`rounded-lg px-2 py-1 text-[9px] font-black ${d.status === 'OPEN' ? 'bg-red-500/15 text-red-300' : d.status === 'RESOLVED' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-500/15 text-slate-300'}`}>{d.status}</span>
+                  <div className="flex items-center gap-2 shrink-0">
+                        <span className={`rounded-lg px-2 py-1 text-[9px] font-black ${d.status === 'OPEN' ? 'bg-red-500/15 text-red-300' : d.status === 'RESOLVED' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-500/15 text-slate-300'}`}>{d.status}</span>
+                        <button
+                          type="button"
+                          onClick={() => deleteMatchDispute(d)}
+                          disabled={disputeDeleting}
+                          className="p-1.5 rounded-lg bg-red-950/60 hover:bg-red-900 text-red-300 border border-red-800/60 disabled:opacity-40"
+                          title="এই Match Complaint Delete"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-[10px]"><div className="bg-[#0b1022] rounded-xl p-2"><span className="text-slate-500">Problem</span><div className="font-bold text-amber-300 mt-1">{d.problemType}</div></div><div className="bg-[#0b1022] rounded-xl p-2"><span className="text-slate-500">Match Status / Score</span><div className="font-bold text-cyan-300 mt-1">{d.liveMatchStatus || '—'} / {d.liveScore ?? '—'}</div></div></div>
                 <div className="bg-[#0b1022] rounded-xl p-3 text-xs text-slate-300 leading-relaxed">{d.details}</div>
@@ -1624,8 +1712,20 @@ export const AdminPanel: React.FC = () => {
         {activeAdminTab === 'referrals' && (
           <div className="space-y-4 max-w-5xl">
             <div className="bg-[#121935] p-4 rounded-2xl border border-amber-500/30">
-              <h2 className="text-base font-black text-white flex items-center gap-2"><Sparkles className="w-5 h-5 text-amber-400" /> রেফারেল বোনাস অনুমোদন</h2>
-              <p className="text-xs text-slate-400 mt-1">যোগ্য Referral এখানে তালিকায় আসবে। Admin অনুমোদন না করা পর্যন্ত কোনো বোনাস Gaming Balance-এ যোগ হবে না।</p>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-base font-black text-white flex items-center gap-2"><Sparkles className="w-5 h-5 text-amber-400" /> রেফারেল বোনাস অনুমোদন</h2>
+                  <p className="text-xs text-slate-400 mt-1">যোগ্য Referral এখানে তালিকায় আসবে। Admin অনুমোদন না করা পর্যন্ত কোনো বোনাস Gaming Balance-এ যোগ হবে না।</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={deleteAllReferrals}
+                  disabled={referralDeleting || referrals.length === 0}
+                  className="shrink-0 bg-red-950 hover:bg-red-900 disabled:opacity-50 disabled:cursor-not-allowed text-red-300 border border-red-800 px-3 py-2 rounded-xl text-xs font-black"
+                >
+                  {referralDeleting ? 'ডিলিট হচ্ছে...' : 'সব ডিলিট'}
+                </button>
+              </div>
             </div>
             <div className="space-y-3">
               {referrals.map((r:any) => {
@@ -1638,7 +1738,17 @@ export const AdminPanel: React.FC = () => {
                         <div className="text-[11px] text-slate-400 mt-1">Bonus ৳{Number(r.bonusAmount || 0)} • Qualified Deposit ৳{Number(r.qualifyingDeposit || 0)}</div>
                         <div className="text-[10px] text-slate-500 mt-1">Created: {r.createdAt ? new Date(r.createdAt).toLocaleString('bn-BD') : '—'}</div>
                       </div>
-                      <span className={`shrink-0 text-[10px] font-black px-2 py-1 rounded-lg border ${pending ? 'text-amber-300 bg-amber-500/10 border-amber-500/30' : r.status === 'PAID' ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' : 'text-red-300 bg-red-500/10 border-red-500/30'}`}>{pending ? 'PENDING APPROVAL' : r.status}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className={`text-[10px] font-black px-2 py-1 rounded-lg border ${pending ? 'text-amber-300 bg-amber-500/10 border-amber-500/30' : r.status === 'PAID' ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' : 'text-red-300 bg-red-500/10 border-red-500/30'}`}>{pending ? 'PENDING APPROVAL' : r.status}</span>
+                        <button
+                          type="button"
+                          onClick={() => deleteReferral(r)}
+                          disabled={referralDeleting}
+                          className="bg-red-950 hover:bg-red-900 disabled:opacity-50 disabled:cursor-not-allowed text-red-300 border border-red-800 px-2.5 py-1 rounded-lg text-[10px] font-black"
+                        >
+                          ডিলিট
+                        </button>
+                      </div>
                     </div>
                     {pending && <div className="mt-3 flex gap-2"><button type="button" onClick={() => approveReferral(r)} className="flex-1 bg-emerald-500 text-slate-950 font-black px-3 py-2 rounded-xl text-xs">অনুমোদন করুন</button><button type="button" onClick={() => rejectReferral(r)} className="flex-1 bg-red-950 text-red-300 border border-red-800 font-black px-3 py-2 rounded-xl text-xs">রিজেক্ট</button></div>}
                   </div>
