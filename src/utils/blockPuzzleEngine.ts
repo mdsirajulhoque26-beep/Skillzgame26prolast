@@ -6,34 +6,28 @@ import { BlockShape, SpecialBlockType, PracticeDifficulty } from '../types';
 export const BOARD_SIZE = 8;
 
 // All authentic block puzzle shapes with high-contrast arcade color palette (Pink, Green, Yellow, Orange, Purple, Cyan, Red)
-export const BLOCK_SHAPES_CATALOG: Omit<BlockShape, 'id'>[] = [
-  // 2 DOT
-  { name: 'Line 2H', matrix: [[1,1]], color: '#22c55e', accentColor: '#16a34a' },
-  { name: 'Line 2V', matrix: [[1],[1]], color: '#22c55e', accentColor: '#16a34a' },
+export const BLOCK_SHAPES_CATALOG: BlockShapeDefinition[] = [
+  // 2-dot
+  { id: 'line-2-h', name: 'Line 2H', matrix: [[1, 1]] },
+  { id: 'line-2-v', name: 'Line 2V', matrix: [[1], [1]] },
 
-  // 3 DOT
-  { name: 'Line 3H', matrix: [[1,1,1]], color: '#f43f5e', accentColor: '#e11d48' },
-  { name: 'Line 3V', matrix: [[1],[1],[1]], color: '#f43f5e', accentColor: '#e11d48' },
-  { name: 'Corner 3', matrix: [[1,1],[1,0]], color: '#22c55e', accentColor: '#16a34a' },
+  // 3-dot
+  { id: 'line-3-h', name: 'Line 3H', matrix: [[1, 1, 1]] },
+  { id: 'line-3-v', name: 'Line 3V', matrix: [[1], [1], [1]] },
+  { id: 'corner-3', name: 'Corner 3', matrix: [[1, 1], [1, 0]] },
 
-  // 4 DOT
-  { name: 'Square 2x2', matrix: [[1,1],[1,1]], color: '#f97316', accentColor: '#ea580c' },
-  { name: 'Line 4H', matrix: [[1,1,1,1]], color: '#f97316', accentColor: '#ea580c' },
-  { name: 'Line 4V', matrix: [[1],[1],[1],[1]], color: '#f97316', accentColor: '#ea580c' },
-  { name: 'T 4H', matrix: [[1,1,1],[0,1,0]], color: '#f43f5e', accentColor: '#e11d48' },
+  // 4-dot
+  { id: 'square-2x2', name: 'Square 2x2', matrix: [[1, 1], [1, 1]] },
+  { id: 'line-4-h', name: 'Line 4H', matrix: [[1, 1, 1, 1]] },
+  { id: 'line-4-v', name: 'Line 4V', matrix: [[1], [1], [1], [1]] },
+  { id: 't-4-h', name: 'T 4H', matrix: [[1, 1, 1], [0, 1, 0]] },
 
-  // 6 DOT — HORIZONTAL 3x2
-  { name: 'Rectangle 6H (3x2)', matrix: [[1,1,1],[1,1,1]], color: '#06b6d4', accentColor: '#0891b2' },
+  // 6-dot — only equal rectangles
+  { id: 'rectangle-6-h', name: 'Rectangle 6H', matrix: [[1, 1, 1], [1, 1, 1]] },
+  { id: 'rectangle-6-v', name: 'Rectangle 6V', matrix: [[1, 1], [1, 1], [1, 1]] },
 
-  // 6 DOT — VERTICAL 2x3
-  { name: 'Rectangle 6V (2x3)', matrix: [[1,1],[1,1],[1,1]], color: '#06b6d4', accentColor: '#0891b2' },
-
-  // 9 DOT — 3x3
-  { name: 'Square 3x3', matrix: [
-    [1,1,1],
-    [1,1,1],
-    [1,1,1]
-  ], color: '#eab308', accentColor: '#ca8a04' },
+  // 9-dot
+  { id: 'square-3x3', name: 'Square 3x3', matrix: [[1, 1, 1], [1, 1, 1], [1, 1, 1]] },
 ];
 
 // Special Blocks definition
