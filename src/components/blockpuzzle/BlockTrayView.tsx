@@ -52,7 +52,8 @@ export const BlockTrayView: React.FC<BlockTrayViewProps> = ({
                         key={c}
                         className={`block-3d-tray-cell w-[42px] h-[42px] sm:w-[44px] sm:h-[44px] ${cell !== 0 ? '' : 'opacity-0'}`}
                         style={{
-                          backgroundColor: cell !== 0 ? piece.color : 'transparent',
+                          backgroundColor: cell !== 0 ? (piece.color || '#22c55e') : 'transparent',
+                          borderColor: cell !== 0 ? (piece.accentColor || '#16a34a') : 'transparent',
                         }}
                       />
                     ))}
