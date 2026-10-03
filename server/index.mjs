@@ -1265,6 +1265,42 @@ app.patch('/api/admin/support-chats/:id', auth, admin, async (req, res) => {
   } catch (err) { res.status(503).json({ message: err?.message || 'Chat status update করা যায়নি।' }); }
 });
 
+app.delete('/api/admin/support-chats/:id', auth, admin, async (req, res) => {
+  try {
+    const deleted = await withDbLock(async () => {
+      const db = await loadDb();
+      const chats = Array.isArray(db.supportChats) ? db.supportChats : [];
+      const before = chats.length;
+      db.supportChats = chats.filter(c => String(c.id) !== String(req.params.id));
+      const count = before - db.supportChats.length;
+      if (count > 0) await saveDbPartial(db, ['supportChats']);
+      return count;
+    });
+    if (!deleted) return res.status(404).json({ message: 'Support chat পাওয়া যায়নি।' });
+    res.json({ ok: true, deleted });
+  } catch (err) {
+    res.status(503).json({ message: err?.message || 'Support chat delete করা যায়নি।' });
+  }
+});
+
+app.delete('/api/admin/support-chats', auth, admin, async (req, res) => {
+  try {
+    const deleted = await withDbLock(async () => {
+      const db = await loadDb();
+      const chats = Array.isArray(db.supportChats) ? db.supportChats : [];
+      const count = chats.length;
+      if (count > 0) {
+        db.supportChats = [];
+        await saveDbPartial(db, ['supportChats']);
+      }
+      return count;
+    });
+    res.json({ ok: true, deleted });
+  } catch (err) {
+    res.status(503).json({ message: err?.message || 'সব Support chat delete করা যায়নি।' });
+  }
+});
+
 app.get('/api/history', async (req, res) => {
   try {
     const authHeader = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');

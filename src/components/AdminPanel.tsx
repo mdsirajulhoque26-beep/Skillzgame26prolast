@@ -91,6 +91,7 @@ export const AdminPanel: React.FC = () => {
   const [selectedSupportChat, setSelectedSupportChat] = useState<any | null>(null);
   const [supportReply, setSupportReply] = useState('');
   const [supportSending, setSupportSending] = useState(false);
+  const [supportDeleting, setSupportDeleting] = useState(false);
 
   useEffect(() => {
     refreshUsers();
@@ -155,7 +156,7 @@ export const AdminPanel: React.FC = () => {
       const data = await backendApi.adminSupportChats();
       const incoming = Array.isArray(data.chats) ? data.chats : [];
       setSupportChats(prev => {
-        const byId = new Map(prev.map((c:any) => [String(c.id), c]));
+        const byId = new Map<string, any>(prev.map((c:any) => [String(c.id), c]));
         incoming.forEach((c:any) => {
           const old = byId.get(String(c.id));
           const oldTime = Date.parse(old?.updatedAt || old?.createdAt || 0);
@@ -176,6 +177,37 @@ export const AdminPanel: React.FC = () => {
   };
   const sendSupportReply = async () => { const text=supportReply.trim(); if(!text || !selectedSupportChat || supportSending) return; setSupportSending(true); try { const data=await backendApi.adminSendSupportMessage(selectedSupportChat.id,text); setSelectedSupportChat(data.chat); setSupportChats(prev=>prev.map(c=>c.id===data.chat.id?data.chat:c)); setSupportReply(''); } catch(e:any){ showToast(e?.message||'Reply পাঠানো যায়নি।','error'); } finally { setSupportSending(false); } };
   const toggleSupportStatus = async () => { if(!selectedSupportChat) return; try { const next=selectedSupportChat.status==='CLOSED'?'OPEN':'CLOSED'; const data=await backendApi.adminUpdateSupportChat(selectedSupportChat.id,next); setSelectedSupportChat(data.chat); setSupportChats(prev=>prev.map(c=>c.id===data.chat.id?data.chat:c)); } catch(e:any){ showToast(e?.message||'Chat status update করা যায়নি।','error'); } };
+  const deleteSupportChat = async (chat:any) => {
+    if (!chat || supportDeleting) return;
+    if (!window.confirm(`“${chat.userName || 'Player'}” এর Support Chat সম্পূর্ণভাবে delete করবেন?\n\nএই Chat-এর message history-ও মুছে যাবে।`)) return;
+    setSupportDeleting(true);
+    try {
+      const data = await backendApi.adminDeleteSupportChat(chat.id);
+      setSupportChats(prev => prev.filter(c => String(c.id) !== String(chat.id)));
+      setSelectedSupportChat(prev => prev && String(prev.id) === String(chat.id) ? null : prev);
+      showToast(`Support Chat delete হয়েছে। (${data.deleted || 0})`);
+    } catch (e:any) {
+      showToast(e?.message || 'Support Chat delete করা যায়নি।', 'error');
+    } finally {
+      setSupportDeleting(false);
+    }
+  };
+
+  const deleteAllSupportChats = async () => {
+    if (supportDeleting || supportChats.length === 0) return;
+    if (!window.confirm(`সব ${supportChats.length}টি Support Chat এবং তাদের message history সম্পূর্ণভাবে delete করবেন?\n\nএই কাজটি Undo করা যাবে না।`)) return;
+    setSupportDeleting(true);
+    try {
+      const data = await backendApi.adminDeleteAllSupportChats();
+      setSupportChats([]);
+      setSelectedSupportChat(null);
+      showToast(`সব Support Chat delete হয়েছে। (${data.deleted || 0})`);
+    } catch (e:any) {
+      showToast(e?.message || 'সব Support Chat delete করা যায়নি।', 'error');
+    } finally {
+      setSupportDeleting(false);
+    }
+  };
   const updateDispute = async (d:any, status:'RESOLVED'|'REJECTED') => { const note = window.prompt(status === 'RESOLVED' ? 'Resolution note (optional):' : 'Reject reason (optional):', d.adminNote || '') ?? ''; try { await backendApi.updateMatchDispute(d.id, status, note); await refreshDisputes(); showToast(status === 'RESOLVED' ? 'Complaint resolved হয়েছে।' : 'Complaint rejected হয়েছে।'); } catch (e:any) { showToast(e?.message || 'Complaint update করা যায়নি।', 'error'); } };
   const approveReferral = async (r:any) => { try { await backendApi.approveAdminReferral(r.id); await refreshReferrals(); showToast('Referral bonus অনুমোদন হয়েছে।'); } catch (e:any) { showToast(e?.message || 'Referral approve করা যায়নি।', 'error'); } };
   const rejectReferral = async (r:any) => { const reason = window.prompt('Reject করার কারণ (ঐচ্ছিক):', '') ?? ''; try { await backendApi.rejectAdminReferral(r.id, reason); await refreshReferrals(); showToast('Referral reject করা হয়েছে।'); } catch (e:any) { showToast(e?.message || 'Referral reject করা যায়নি।', 'error'); } };
@@ -1016,14 +1048,14 @@ export const AdminPanel: React.FC = () => {
 
         {activeAdminTab === 'support' && (
           <div className="space-y-4 max-w-6xl">
-            <div className="bg-[#121935] p-4 rounded-2xl border border-cyan-500/20"><h2 className="text-base font-black text-white flex items-center gap-2"><MessageCircle className="w-5 h-5 text-cyan-300"/> Live Support Chat</h2><p className="text-xs text-slate-400 mt-1">Player-দের message এখানে real-time polling-এর মাধ্যমে আসবে। Reply দিলে player-এর chat-এ দেখা যাবে।</p></div>
+            <div className="bg-[#121935] p-4 rounded-2xl border border-cyan-500/20 flex items-start justify-between gap-3"><div className="min-w-0"><h2 className="text-base font-black text-white flex items-center gap-2"><MessageCircle className="w-5 h-5 text-cyan-300"/> Live Support Chat</h2><p className="text-xs text-slate-400 mt-1">Player-দের message এখানে real-time polling-এর মাধ্যমে আসবে। Reply দিলে player-এর chat-এ দেখা যাবে।</p></div><button type="button" onClick={deleteAllSupportChats} disabled={supportDeleting || supportChats.length===0} className="shrink-0 px-3 py-2 rounded-xl bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800 text-[10px] font-black disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5" title="সব Support Chat Delete"><Trash2 className="w-3.5 h-3.5"/> সব ডিলিট</button></div>
             <div className="grid lg:grid-cols-[280px_1fr] gap-3">
               <div className="bg-[#121935] rounded-2xl border border-indigo-900/60 p-2 space-y-1 max-h-[620px] overflow-y-auto">
-                {supportChats.length===0 ? <div className="p-6 text-center text-xs text-slate-500">কোনো support chat নেই।</div> : supportChats.map((c:any)=><button key={c.id} onClick={()=>setSelectedSupportChat(c)} className={`w-full text-left p-3 rounded-xl border ${selectedSupportChat?.id===c.id?'bg-cyan-500/10 border-cyan-500/40':'bg-[#0b1022] border-indigo-900/50 hover:border-indigo-700'}`}><div className="flex items-center justify-between gap-2"><span className="font-black text-xs text-white truncate">{c.userName || 'Player'}</span>{c.unreadForAdmin>0&&<span className="bg-red-500 text-white rounded-full px-1.5 text-[9px] font-black">{c.unreadForAdmin}</span>}</div><div className="text-[10px] text-slate-500 mt-1 truncate">{c.lastMessage || 'No message'}</div><div className="text-[9px] text-slate-600 mt-1">{c.status} • {c.userPhone || ''}</div></button>)}
+                {supportChats.length===0 ? <div className="p-6 text-center text-xs text-slate-500">কোনো support chat নেই।</div> : supportChats.map((c:any)=><div key={c.id} className={`w-full p-2 rounded-xl border flex items-center gap-1.5 ${selectedSupportChat?.id===c.id?'bg-cyan-500/10 border-cyan-500/40':'bg-[#0b1022] border-indigo-900/50'}`}><button type="button" onClick={()=>setSelectedSupportChat(c)} className="min-w-0 flex-1 text-left p-1.5"><div className="flex items-center justify-between gap-2"><span className="font-black text-xs text-white truncate">{c.userName || 'Player'}</span>{c.unreadForAdmin>0&&<span className="bg-red-500 text-white rounded-full px-1.5 text-[9px] font-black">{c.unreadForAdmin}</span>}</div><div className="text-[10px] text-slate-500 mt-1 truncate">{c.lastMessage || 'No message'}</div><div className="text-[9px] text-slate-600 mt-1">{c.status} • {c.userPhone || ''}</div></button><button type="button" onClick={() => deleteSupportChat(c)} disabled={supportDeleting} className="shrink-0 p-2 rounded-lg bg-red-950/60 hover:bg-red-900 text-red-300 border border-red-800/60 disabled:opacity-40" title="এই Support Chat Delete"><Trash2 className="w-3.5 h-3.5"/></button></div>)}
               </div>
               <div className="bg-[#121935] rounded-2xl border border-indigo-900/60 min-h-[500px] flex flex-col">
                 {!selectedSupportChat ? <div className="flex-1 flex items-center justify-center text-sm text-slate-500">একটি support chat নির্বাচন করুন।</div> : <>
-                  <div className="p-4 border-b border-indigo-900 flex items-center justify-between"><div><div className="font-black text-white">{selectedSupportChat.userName || 'Player'}</div><div className="text-[10px] text-slate-500">{selectedSupportChat.userPhone || ''} • Chat #{String(selectedSupportChat.id).slice(-8)}</div></div><button onClick={toggleSupportStatus} className={`px-3 py-1.5 rounded-lg text-[10px] font-black ${selectedSupportChat.status==='OPEN'?'bg-red-500/15 text-red-300 border border-red-500/30':'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'}`}>{selectedSupportChat.status==='OPEN'?'Close Chat':'Re-open Chat'}</button></div>
+                  <div className="p-4 border-b border-indigo-900 flex items-center justify-between gap-2"><div className="min-w-0"><div className="font-black text-white">{selectedSupportChat.userName || 'Player'}</div><div className="text-[10px] text-slate-500">{selectedSupportChat.userPhone || ''} • Chat #{String(selectedSupportChat.id).slice(-8)}</div></div><div className="flex items-center gap-1.5 shrink-0"><button onClick={toggleSupportStatus} disabled={supportDeleting} className={`px-3 py-1.5 rounded-lg text-[10px] font-black disabled:opacity-40 ${selectedSupportChat.status==='OPEN'?'bg-red-500/15 text-red-300 border border-red-500/30':'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'}`}>{selectedSupportChat.status==='OPEN'?'Close Chat':'Re-open Chat'}</button><button type="button" onClick={() => deleteSupportChat(selectedSupportChat)} disabled={supportDeleting} className="p-2 rounded-lg bg-red-950/70 hover:bg-red-900 text-red-300 border border-red-800/60 disabled:opacity-40" title="Delete Support Chat"><Trash2 className="w-4 h-4"/></button></div></div>
                   <div className="flex-1 p-4 space-y-2 overflow-y-auto max-h-[470px]">{(selectedSupportChat.messages||[]).map((m:any)=><div key={m.id} className={`flex ${m.senderType==='ADMIN'?'justify-end':'justify-start'}`}><div className={`max-w-[75%] rounded-2xl px-3 py-2 ${m.senderType==='ADMIN'?'bg-cyan-600 text-white':'bg-[#0b1022] border border-indigo-800 text-slate-200'}`}><div className="text-xs whitespace-pre-wrap">{m.message}</div><div className="text-[8px] opacity-60 mt-1">{new Date(m.createdAt).toLocaleString('en-GB')}</div></div></div>)}</div>
                   <div className="p-3 border-t border-indigo-900 flex gap-2"><textarea value={supportReply} onChange={e=>setSupportReply(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendSupportReply();}}} rows={2} maxLength={2000} placeholder="Player-কে reply লিখুন..." className="flex-1 resize-none bg-[#0b1022] border border-indigo-800 rounded-xl px-3 py-2 text-xs text-white"/><button onClick={sendSupportReply} disabled={!supportReply.trim()||supportSending} className="w-11 rounded-xl bg-cyan-500 text-slate-950 flex items-center justify-center disabled:opacity-40"><Send className="w-4 h-4"/></button></div>
                 </>}
@@ -1097,7 +1129,7 @@ export const AdminPanel: React.FC = () => {
 
             <div className="space-y-3">
               {Array.from(
-                new Map(
+                new Map<string, { userId: string; userName: string; userPhone: string; count: number }>(
                   resultSubmissions.map(sub => [
                     String(sub.userId),
                     {
