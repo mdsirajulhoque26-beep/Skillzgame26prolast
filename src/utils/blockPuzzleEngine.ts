@@ -327,11 +327,12 @@ export function generateBlockTrio(
     } else {
       const shapeIdx = prng.nextInt(0, availableCatalog.length - 1);
       const chosen = availableCatalog[shapeIdx];
+      const palette = PALETTE_COLORS[shapeIdx % PALETTE_COLORS.length];
       shapes.push({
         id: `shape_${trioIndex}_${i}_${chosen.name.replace(/\s+/g, '_')}`,
         matrix: chosen.matrix.map(row => [...row]),
-        color: chosen.color,
-        accentColor: chosen.accentColor,
+        color: palette.color,
+        accentColor: palette.accentColor,
         name: chosen.name,
       });
     }
