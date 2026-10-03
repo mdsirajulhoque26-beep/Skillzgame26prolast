@@ -475,3 +475,22 @@
     inset -2px -2px 0 rgba(0,0,0,.16),
     0 2px 4px rgba(0,0,0,.20) !important;
 }
+
+/* Pro Match: use the original fixed Practice-style board geometry */
+.block-gameplay-pro .block-gameplay-board-slot {
+  flex: 0 0 auto !important;
+  width: 100% !important;
+  height: min(92vw, 510px, calc(100dvh - 300px)) !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.block-gameplay-pro .block-board-shell {
+  width: min(100%, 510px, calc(100dvh - 300px)) !important;
+  height: min(100%, 510px, calc(100dvh - 300px)) !important;
+  aspect-ratio: 1 / 1 !important;
+  flex: 0 0 auto !important;
+}

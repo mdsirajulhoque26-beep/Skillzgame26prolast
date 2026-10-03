@@ -1285,7 +1285,7 @@ export const BlockPuzzleDuel: React.FC = () => {
   const isPlayingScreen = screenState === 'playing';
 
   return (
-    <div className={`${isPlayingScreen ? 'block-gameplay-locked' : 'min-h-screen pb-24'} bg-[#070b18] text-white flex flex-col justify-between max-w-md mx-auto relative select-none`}>
+    <div className={`${isPlayingScreen ? `block-gameplay-locked ${gameMode === 'duel' ? 'block-gameplay-pro' : 'block-gameplay-practice'}` : 'min-h-screen pb-24'} bg-[#070b18] text-white flex flex-col justify-between max-w-md mx-auto relative select-none`}>
       {screenState === 'tournament_rank' && (
         <BlockTournamentRankList
           tournament={tournamentData}
