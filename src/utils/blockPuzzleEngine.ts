@@ -7,58 +7,33 @@ export const BOARD_SIZE = 8;
 
 // All authentic block puzzle shapes with high-contrast arcade color palette (Pink, Green, Yellow, Orange, Purple, Cyan, Red)
 export const BLOCK_SHAPES_CATALOG: Omit<BlockShape, 'id'>[] = [
-  // Dot (1x1)
-  { name: 'Dot', matrix: [[1]], color: '#eab308', accentColor: '#ca8a04' }, // Yellow
+  // 2 DOT
+  { name: 'Line 2H', matrix: [[1,1]], color: '#22c55e', accentColor: '#16a34a' },
+  { name: 'Line 2V', matrix: [[1],[1]], color: '#22c55e', accentColor: '#16a34a' },
 
-  // 2-tile lines
-  { name: 'Line 2H', matrix: [[1, 1]], color: '#22c55e', accentColor: '#16a34a' }, // Green
-  { name: 'Line 2V', matrix: [[1], [1]], color: '#22c55e', accentColor: '#16a34a' },
+  // 3 DOT
+  { name: 'Line 3H', matrix: [[1,1,1]], color: '#f43f5e', accentColor: '#e11d48' },
+  { name: 'Line 3V', matrix: [[1],[1],[1]], color: '#f43f5e', accentColor: '#e11d48' },
+  { name: 'Corner 3', matrix: [[1,1],[1,0]], color: '#22c55e', accentColor: '#16a34a' },
 
-  // 3-tile lines
-  { name: 'Line 3H', matrix: [[1, 1, 1]], color: '#f43f5e', accentColor: '#e11d48' }, // Pink
-  { name: 'Line 3V', matrix: [[1], [1], [1]], color: '#f43f5e', accentColor: '#e11d48' },
+  // 4 DOT
+  { name: 'Square 2x2', matrix: [[1,1],[1,1]], color: '#f97316', accentColor: '#ea580c' },
+  { name: 'Line 4H', matrix: [[1,1,1,1]], color: '#f97316', accentColor: '#ea580c' },
+  { name: 'Line 4V', matrix: [[1],[1],[1],[1]], color: '#f97316', accentColor: '#ea580c' },
+  { name: 'T 4H', matrix: [[1,1,1],[0,1,0]], color: '#f43f5e', accentColor: '#e11d48' },
 
-  // 4-tile lines
-  { name: 'Line 4H', matrix: [[1, 1, 1, 1]], color: '#f97316', accentColor: '#ea580c' }, // Orange
-  { name: 'Line 4V', matrix: [[1], [1], [1], [1]], color: '#f97316', accentColor: '#ea580c' },
+  // 6 DOT — HORIZONTAL 3x2
+  { name: 'Rectangle 6H (3x2)', matrix: [[1,1,1],[1,1,1]], color: '#06b6d4', accentColor: '#0891b2' },
 
-  // 5-tile lines
-  { name: 'Line 5H', matrix: [[1, 1, 1, 1, 1]], color: '#a855f7', accentColor: '#9333ea' }, // Purple
-  { name: 'Line 5V', matrix: [[1], [1], [1], [1], [1]], color: '#a855f7', accentColor: '#9333ea' },
+  // 6 DOT — VERTICAL 2x3
+  { name: 'Rectangle 6V (2x3)', matrix: [[1,1],[1,1],[1,1]], color: '#06b6d4', accentColor: '#0891b2' },
 
-  // Squares
-  { name: 'Square 2x2', matrix: [[1, 1], [1, 1]], color: '#f97316', accentColor: '#ea580c' }, // Orange
-  { name: 'Square 3x3', matrix: [[1, 1, 1], [1, 1, 1], [1, 1, 1]], color: '#eab308', accentColor: '#ca8a04' }, // Yellow Big
-
-  // Corners 2x2
-  { name: 'Corner 2x2 TL', matrix: [[1, 1], [1, 0]], color: '#22c55e', accentColor: '#16a34a' }, // Green
-  { name: 'Corner 2x2 TR', matrix: [[1, 1], [0, 1]], color: '#22c55e', accentColor: '#16a34a' },
-  { name: 'Corner 2x2 BL', matrix: [[1, 0], [1, 1]], color: '#22c55e', accentColor: '#16a34a' },
-  { name: 'Corner 2x2 BR', matrix: [[0, 1], [1, 1]], color: '#22c55e', accentColor: '#16a34a' },
-
-  // Big Corners 3x3
-  { name: 'Corner 3x3 TL', matrix: [[1, 1, 1], [1, 0, 0], [1, 0, 0]], color: '#06b6d4', accentColor: '#0891b2' }, // Cyan
-  { name: 'Corner 3x3 TR', matrix: [[1, 1, 1], [0, 0, 1], [0, 0, 1]], color: '#06b6d4', accentColor: '#0891b2' },
-  { name: 'Corner 3x3 BL', matrix: [[1, 0, 0], [1, 0, 0], [1, 1, 1]], color: '#06b6d4', accentColor: '#0891b2' },
-  { name: 'Corner 3x3 BR', matrix: [[0, 0, 1], [0, 0, 1], [1, 1, 1]], color: '#06b6d4', accentColor: '#0891b2' },
-
-  // T-Shapes
-  { name: 'T-Shape Up', matrix: [[1, 1, 1], [0, 1, 0]], color: '#f43f5e', accentColor: '#e11d48' }, // Pink
-  { name: 'T-Shape Down', matrix: [[0, 1, 0], [1, 1, 1]], color: '#f43f5e', accentColor: '#e11d48' },
-  { name: 'T-Shape Left', matrix: [[1, 0], [1, 1], [1, 0]], color: '#f43f5e', accentColor: '#e11d48' },
-  { name: 'T-Shape Right', matrix: [[0, 1], [1, 1], [0, 1]], color: '#f43f5e', accentColor: '#e11d48' },
-
-  // L-Shapes 3x2
-  { name: 'L-Shape 1', matrix: [[1, 0], [1, 0], [1, 1]], color: '#a855f7', accentColor: '#9333ea' }, // Purple
-  { name: 'L-Shape 2', matrix: [[0, 1], [0, 1], [1, 1]], color: '#a855f7', accentColor: '#9333ea' },
-  { name: 'L-Shape 3', matrix: [[1, 1], [1, 0], [1, 0]], color: '#a855f7', accentColor: '#9333ea' },
-  { name: 'L-Shape 4', matrix: [[1, 1], [0, 1], [0, 1]], color: '#a855f7', accentColor: '#9333ea' },
-
-  // Z-Shapes / S-Shapes
-  { name: 'Z-Shape H', matrix: [[1, 1, 0], [0, 1, 1]], color: '#ec4899', accentColor: '#be185d' },
-  { name: 'S-Shape H', matrix: [[0, 1, 1], [1, 1, 0]], color: '#ec4899', accentColor: '#be185d' },
-  { name: 'Z-Shape V', matrix: [[1, 0], [1, 1], [0, 1]], color: '#ec4899', accentColor: '#be185d' },
-  { name: 'S-Shape V', matrix: [[0, 1], [1, 1], [1, 0]], color: '#ec4899', accentColor: '#be185d' },
+  // 9 DOT — 3x3
+  { name: 'Square 3x3', matrix: [
+    [1,1,1],
+    [1,1,1],
+    [1,1,1]
+  ], color: '#eab308', accentColor: '#ca8a04' },
 ];
 
 // Special Blocks definition
