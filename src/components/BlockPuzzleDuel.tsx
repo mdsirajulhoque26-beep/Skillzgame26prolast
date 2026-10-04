@@ -631,6 +631,23 @@ export const BlockPuzzleDuel: React.FC = () => {
   // If the server is slower than the player, final submission waits only for that
   // already-running request; it never starts a second paid match.
   const handleStartDuel = (fee: number, winPrize: number) => {
+    // Fast balance gate: do not open a paid game when the current
+    // balance is already below the required entry fee.
+    // The server remains authoritative for the actual atomic debit.
+    const cfg = multiplayerProConfig;
+    const requiredFee = cfg ? Number(cfg.entryFee) : Number(fee);
+    const currentBalance = Number(user?.gamingBalance || 0);
+
+    if (!Number.isFinite(requiredFee) || requiredFee <= 0) {
+      alert('এই Pro Match-এর Entry Fee সঠিক নয়।');
+      return;
+    }
+
+    if (!Number.isFinite(currentBalance) || currentBalance < requiredFee) {
+      alert('অপর্যাপ্ত গেমিং ব্যালেন্স! দয়া করে ডিপোজিট করুন।');
+      return;
+    }
+
     blockAudio.playClick();
     startDuelInProgressRef.current = true;
     freshProMatchRef.current = 'starting';
@@ -654,9 +671,8 @@ export const BlockPuzzleDuel: React.FC = () => {
     setMatchSeed(localSeed);
     initMatch('duel', difficulty, undefined, localSeed);
 
-    const cfg = multiplayerProConfig;
     const startPromise = startBlockPuzzleMatch(
-      cfg ? Number(cfg.entryFee) : fee,
+      requiredFee,
       cfg ? Number(cfg.prizeAmount) : winPrize,
       cfg ? Number(cfg.players) : 2,
       'block_puzzle',
