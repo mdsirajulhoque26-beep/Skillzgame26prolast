@@ -274,7 +274,33 @@ app.post('/api/users/:id/balance', auth, admin, async (req, res) => {
 
 app.get('/api/transactions', auth, (req, res) => {
   const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-  const items = req.db.transactions.filter(t => t.userId === req.user.id && (Date.parse(t.date || '') || 0) >= cutoff).slice(0, 500);
+  const items = req.db.transactions.filter(t => t.userId === req.user.id && (Date.parse(t.date || '') || 0) >= cutoff).slice(0, 500).map(t => {
+    // 2-player = normal Pro Match; 3+ players = Multiplayer Pro Match.
+    if (t.category !== 'match' || !String(t.title || '').includes('Multiplayer Pro Match')) return t;
+
+    const sessions = req.db.blockPuzzleMatches || [];
+    const linked = sessions.filter(m =>
+      String(m.id) === String(t.matchId || '') ||
+      String(m.duelId || '') === String(t.matchId || '')
+    );
+
+    if (!linked.length) return t;
+
+    const playerCount = Math.max(
+      2,
+      ...linked.map(m => Number(m.playerCount || 2))
+    );
+
+    if (playerCount <= 2) {
+      return {
+        ...t,
+        title: String(t.title).replace(/Multiplayer Pro Match/g, 'Pro Match')
+      };
+    }
+
+    return t;
+  });
+
   res.json({ transactions: items });
 });
 
@@ -388,7 +414,8 @@ async function settleBlockPuzzleDuel(db, duelId) {
     winner.winningBalance = money(Number(winner.winningBalance || 0) + prize);
     winner.totalWinnings = money(Number(winner.totalWinnings || 0) + prize);
     winner.matchesWon = Number(winner.matchesWon || 0) + 1;
-    db.transactions.unshift(makeTransaction(winner.id, 'match_win', prize, 'Multiplayer Pro Match Prize', `Rank #${session.groupRank} • ${required} Players`, 'match', { matchId: duelId, gameType: sessions[0]?.gameType || 'block_puzzle', playerCount: required, rank: session.groupRank }));
+    const matchLabel = required > 2 ? 'Multiplayer Pro Match' : 'Pro Match';
+    db.transactions.unshift(makeTransaction(winner.id, 'match_win', prize, `${matchLabel} Prize`, `Rank #${session.groupRank} • ${required} Players`, 'match', { matchId: duelId, gameType: sessions[0]?.gameType || 'block_puzzle', playerCount: required, rank: session.groupRank }));
   }
   return true;
 }
