@@ -6,10 +6,6 @@ export type TabType =
   | 'profile' 
   | 'upload_result' 
   | 'block_puzzle'
-  | 'nut_sort'
-  | 'pool'
-  | 'carrom'
-  | 'chaka_live_spin'
   | 'admin';
 
 export type MatchCategory = 'special' | 'time' | 'one_player';

@@ -9,10 +9,7 @@ import { TransactionsScreen } from './components/TransactionsScreen';
 import { HistoryScreen } from './components/HistoryScreen';
 import { ProfileScreen } from './components/ProfileScreen';
 import { BlockPuzzleDuel } from './components/BlockPuzzleDuel';
-import { NutSortDuel } from './components/NutSortDuel';
-import { ChakaLiveSpin } from './components/ChakaLiveSpin';
 import { AdminPanel } from './components/AdminPanel';
-import { ArcadeOnlineGame } from './components/ArcadeOnlineGame';
 
 // Modals
 import { NoticeModal } from './components/modals/NoticeModal';
@@ -50,10 +47,6 @@ const MainLayout: React.FC = () => {
         {currentTab === 'history' && <HistoryScreen />}
         {currentTab === 'profile' && <ProfileScreen />}
         {currentTab === 'block_puzzle' && <BlockPuzzleDuel />}
-        {currentTab === 'nut_sort' && <NutSortDuel />}
-        {currentTab === 'pool' && <ArcadeOnlineGame gameType="pool" />}
-        {currentTab === 'carrom' && <ArcadeOnlineGame gameType="carrom" />}
-        {currentTab === 'chaka_live_spin' && <ChakaLiveSpin />}
       </main>
 
       {/* Bottom Sticky Navigation */}
