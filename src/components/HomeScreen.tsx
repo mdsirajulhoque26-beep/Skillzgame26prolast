@@ -253,9 +253,9 @@ export const HomeScreen: React.FC = () => {
       )}
 
       {games.map((game) => {
-        const playable = game.gameType === 'block_puzzle';
+        const playable = game.gameType === 'block_puzzle' || game.gameType === 'traffic_dodge';
         return (
-          <div key={game.id} onClick={() => playable && setCurrentTab('block_puzzle')} className={`bg-gradient-to-r from-blue-950/90 via-[#182352] to-purple-950/90 border-2 rounded-2xl p-4 flex items-center justify-between shadow-2xl relative overflow-hidden ${playable ? 'border-cyan-400/80 cursor-pointer hover:border-cyan-300 active:scale-[0.99]' : 'border-indigo-800/70'}`}>
+          <div key={game.id} onClick={() => { if (!playable) return; sessionStorage.setItem('skillz_game_type', game.gameType === 'traffic_dodge' ? 'traffic_dodge' : 'block_puzzle'); setCurrentTab('block_puzzle'); }} className={`bg-gradient-to-r from-blue-950/90 via-[#182352] to-purple-950/90 border-2 rounded-2xl p-4 flex items-center justify-between shadow-2xl relative overflow-hidden ${playable ? 'border-cyan-400/80 cursor-pointer hover:border-cyan-300 active:scale-[0.99]' : 'border-indigo-800/70'}`}>
             <div className="absolute top-0 right-1/4 w-28 h-28 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none" />
             <div className="flex items-center gap-3.5 z-10 min-w-0">
               <div className="w-13 h-13 shrink-0 rounded-2xl bg-gradient-to-tr from-cyan-400 via-indigo-500 to-purple-500 p-0.5 shadow-lg flex items-center justify-center">
@@ -270,7 +270,7 @@ export const HomeScreen: React.FC = () => {
                 <span className="text-[11px] text-slate-300 block mt-0.5">Entry ৳{Number(game.entryFee || 0).toFixed(0)} • Prize ৳{Number(game.prizeAmount || 0).toFixed(0)}</span>
               </div>
             </div>
-            <button disabled={!playable} onClick={(e) => { e.stopPropagation(); if (playable) setCurrentTab('block_puzzle'); }} className={`font-black text-xs px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-1.5 z-10 ${playable ? 'bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-950' : 'bg-slate-700/70 text-slate-400 cursor-not-allowed'}`}>
+            <button disabled={!playable} onClick={(e) => { e.stopPropagation(); if (playable) { sessionStorage.setItem('skillz_game_type', game.gameType === 'traffic_dodge' ? 'traffic_dodge' : 'block_puzzle'); setCurrentTab('block_puzzle'); } }} className={`font-black text-xs px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-1.5 z-10 ${playable ? 'bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-950' : 'bg-slate-700/70 text-slate-400 cursor-not-allowed'}`}>
               <Play className="w-4 h-4 fill-current" /> <span>{playable ? 'Play' : 'শীঘ্রই'}</span>
             </button>
           </div>
