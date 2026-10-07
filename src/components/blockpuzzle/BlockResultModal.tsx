@@ -1,18 +1,12 @@
 import React from 'react';
-import { 
-  Trophy, 
-  Frown, 
-  Handshake, 
-  RotateCcw, 
-  Home, 
-  History, 
-  Sparkles, 
-  ShieldCheck, 
-  Flame,
-  Award,
+import {
+  Trophy,
+  RotateCcw,
+  Home,
+  History,
   Clock,
-  CheckCircle2,
-  Wallet
+  ShieldCheck,
+  Wallet,
 } from 'lucide-react';
 import { BlockGameMode, BlockPlayerState } from '../../types';
 
@@ -32,14 +26,13 @@ interface BlockResultModalProps {
 }
 
 export const BlockResultModal: React.FC<BlockResultModalProps> = ({
-  mode,
   entryFee,
   prize,
   player,
   opponent,
   isPractice,
   isPending = false,
-  outcome = 'WON',
+  outcome = 'PENDING',
   onPlayAgain,
   onGoHome,
   onViewPendingMatches,
@@ -49,195 +42,253 @@ export const BlockResultModal: React.FC<BlockResultModalProps> = ({
   const isLoss = outcome === 'LOST';
   const isDraw = outcome === 'DRAW';
 
+  const title = isPractice
+    ? 'PRACTICE COMPLETE'
+    : isPending
+      ? 'MATCH PENDING'
+      : isWin
+        ? 'YOU WON!'
+        : isLoss
+          ? 'YOU LOST'
+          : 'DRAW';
+
+  const subtitle = isPractice
+    ? 'Great job! Keep practicing and improve your score.'
+    : isPending
+      ? 'Your score has been submitted successfully.'
+      : isWin
+        ? '🎉 অভিনন্দন! আপনি বিজয়ী! 🎉'
+        : isLoss
+          ? 'ভালো খেলেছেন! পরের ম্যাচে আবার চেষ্টা করুন।'
+          : 'দুজনের ফলাফল সমান হয়েছে।';
+
+  const accent = isPending
+    ? 'amber'
+    : isWin
+      ? 'emerald'
+      : isLoss
+        ? 'red'
+        : 'blue';
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in select-none">
-      <div className="bg-[#0e162f] border-2 border-indigo-500/60 rounded-3xl p-5 max-w-sm w-full shadow-2xl space-y-4 text-center relative overflow-hidden">
-        {/* Glow ambient background */}
-        <div className={`absolute -top-12 left-1/2 -translate-x-1/2 w-44 h-44 rounded-full blur-3xl pointer-events-none ${
-          isPending ? 'bg-amber-500/25' : isWin ? 'bg-emerald-500/25' : isLoss ? 'bg-red-500/20' : 'bg-blue-500/20'
-        }`} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in select-none">
+      <div className="relative w-full max-w-sm overflow-hidden rounded-3xl border-2 border-indigo-500/50 bg-[#0b1228] shadow-2xl">
 
-        {/* Certified Badge */}
-        <div className="inline-flex items-center gap-1 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
-          <ShieldCheck className="w-3.5 h-3.5" />
-          <span>Server-Authoritative Anti-Cheat Certified</span>
-        </div>
+        {/* Ambient glow */}
+        <div
+          className={`pointer-events-none absolute -top-24 left-1/2 h-56 w-56 -translate-x-1/2 rounded-full blur-3xl ${
+            accent === 'amber'
+              ? 'bg-amber-500/30'
+              : accent === 'emerald'
+                ? 'bg-emerald-500/30'
+                : accent === 'red'
+                  ? 'bg-red-500/25'
+                  : 'bg-blue-500/25'
+          }`}
+        />
 
-        {/* Main Result Icon & Banner */}
-        {isPractice ? (
-          <div>
-            <div className="w-16 h-16 mx-auto bg-gradient-to-tr from-emerald-500 to-teal-500 rounded-2xl p-0.5 shadow-lg flex items-center justify-center mb-2">
-              <div className="w-full h-full bg-[#0d1222] rounded-[14px] flex items-center justify-center text-3xl">
-                🎯
-              </div>
-            </div>
-            <h2 className="text-xl font-black text-white">
-              প্র্যাকটিস সম্পন্ন হয়েছে!
-            </h2>
-            <p className="text-xs text-slate-300 mt-0.5">
-              চমৎকার স্কোর করেছেন! এন্ট্রি ফি দিয়ে লাইভ ম্যাচ খেলে আসল টাকা জিতুন।
-            </p>
+        <div className="relative p-5 text-center">
+
+          {/* Security badge */}
+          <div className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-bold text-emerald-400">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            SERVER VERIFIED
           </div>
-        ) : isPending ? (
-          <div>
-            <div className="w-16 h-16 mx-auto bg-gradient-to-tr from-amber-400 to-yellow-600 rounded-2xl p-0.5 shadow-lg flex items-center justify-center mb-2 animate-pulse">
-              <div className="w-full h-full bg-[#0d1222] rounded-[14px] flex items-center justify-center text-3xl">
-                ⏳
-              </div>
-            </div>
-            <h2 className="text-xl font-black text-amber-400">
-              ম্যাচ পেন্ডিং রয়েছে
-            </h2>
-            <p className="text-xs text-slate-300 mt-0.5">
-              আপনার স্কোর ({player.score} pts) সাবমিট হয়েছে! অপর প্রান্তে কোনো প্লেয়ার এই এন্ট্রি ফি (৳{entryFee})-তে খেলা শেষ করলেই রেজাল্ট চূড়ান্ত হবে।
-            </p>
-          </div>
-        ) : isWin ? (
-          <div>
-            <div className="w-16 h-16 mx-auto bg-gradient-to-tr from-amber-400 to-yellow-600 rounded-2xl p-0.5 shadow-lg flex items-center justify-center mb-2 animate-bounce">
-              <div className="w-full h-full bg-[#0d1222] rounded-[14px] flex items-center justify-center text-3xl">
-                🏆
-              </div>
-            </div>
-            <h2 className="text-2xl font-black text-amber-400 tracking-wide">
-              অভিনন্দন! আপনি বিজয়ী!
-            </h2>
-            <p className="text-xs text-emerald-300 font-bold mt-0.5 flex items-center justify-center gap-1">
-              <Wallet className="w-3.5 h-3.5" />
-              <span>প্রাইজ ৳{prize} আপনার ওয়ালেটে যোগ হয়েছে!</span>
-            </p>
-          </div>
-        ) : isLoss ? (
-          <div>
-            <div className="w-16 h-16 mx-auto bg-gradient-to-tr from-red-500 to-rose-700 rounded-2xl p-0.5 shadow-lg flex items-center justify-center mb-2">
-              <div className="w-full h-full bg-[#0d1222] rounded-[14px] flex items-center justify-center text-3xl">
-                😔
-              </div>
-            </div>
-            <h2 className="text-2xl font-black text-red-400 tracking-wide">
-              ম্যাচে পরাজিত হয়েছেন
-            </h2>
-            <p className="text-xs text-slate-300 mt-0.5">
-              ভালো খেলেছেন! পরের ম্যাচে আবার চেষ্টা করে বিজয় ছিনিয়ে নিন।
-            </p>
-          </div>
-        ) : (
-          <div>
-            <div className="w-16 h-16 mx-auto bg-gradient-to-tr from-blue-500 to-indigo-600 rounded-2xl p-0.5 shadow-lg flex items-center justify-center mb-2">
-              <div className="w-full h-full bg-[#0d1222] rounded-[14px] flex items-center justify-center text-3xl">
-                🤝
-              </div>
-            </div>
-            <h2 className="text-2xl font-black text-blue-400 tracking-wide">
-              ম্যাচ ড্র হয়েছে!
-            </h2>
-            <p className="text-xs text-blue-300 font-semibold mt-0.5">
-              দুজনের স্কোর সমান হওয়ায় এন্ট্রি ফি ৳{entryFee} ওয়ালেটে ফেরত দেওয়া হয়েছে।
-            </p>
-          </div>
-        )}
 
-        {/* Scoreboard Comparison Card */}
-        <div className="bg-[#080d1e] p-3 rounded-2xl border border-indigo-900/60 space-y-2">
-          {!isPractice && opponent ? (
-            <div className="grid grid-cols-2 gap-2">
-              {/* You */}
-              <div className={`p-2.5 rounded-xl border text-center ${
-                isWin ? 'bg-amber-500/10 border-amber-400/60' : 'bg-[#121935] border-indigo-950'
-              }`}>
-                <span className="text-[10px] text-slate-400 font-bold block">
-                  {player.name} (You)
-                </span>
-                <span className="text-xl font-black text-amber-400 font-mono">
-                  {player.score}
-                </span>
-                <span className="text-[9px] text-emerald-400 font-semibold block">
-                  {player.linesCleared} Lines
-                </span>
-              </div>
-
-              {/* Opponent */}
-              <div className={`p-2.5 rounded-xl border text-center ${
-                isLoss ? 'bg-purple-500/10 border-purple-400/60' : 'bg-[#121935] border-indigo-950'
-              }`}>
-                <span className="text-[10px] text-slate-400 font-bold block truncate">
-                  {opponent.name}
-                </span>
-                <span className="text-xl font-black text-purple-400 font-mono">
-                  {opponent.score}
-                </span>
-                <span className="text-[9px] text-slate-400 font-semibold block">
-                  {opponent.linesCleared ?? 0} Lines
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-3 gap-2">
-              <div className="bg-[#121935] p-2 rounded-xl border border-indigo-950 text-center">
-                <span className="text-[9px] text-slate-400 block font-bold">SCORE</span>
-                <span className="text-base font-black text-amber-400 font-mono">{player.score}</span>
-              </div>
-              <div className="bg-[#121935] p-2 rounded-xl border border-indigo-950 text-center">
-                <span className="text-[9px] text-slate-400 block font-bold">LINES</span>
-                <span className="text-base font-black text-emerald-400 font-mono">{player.linesCleared}</span>
-              </div>
-              <div className="bg-[#121935] p-2 rounded-xl border border-indigo-950 text-center">
-                <span className="text-[9px] text-slate-400 block font-bold">COMBO</span>
-                <span className="text-base font-black text-cyan-400 font-mono">{player.bestCombo}x</span>
-              </div>
-            </div>
-          )}
-
-          {/* Entry & Prize Details */}
-          {entryFee > 0 && (
-            <div className="flex items-center justify-between text-xs px-1 text-slate-300 pt-1 border-t border-indigo-950">
-              <span>এন্ট্রি ফি: ৳{entryFee}</span>
-              <span className="text-amber-400 font-bold">উইন প্রাইজ: ৳{prize}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Action Buttons */}
-        <div className="space-y-2 pt-1">
-          <button
-            id="result-play-again-btn"
-            onClick={onPlayAgain}
-            className="w-full py-3 bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-slate-950 font-black text-sm rounded-xl shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-transform"
+          {/* Main result icon */}
+          <div
+            className={`mx-auto mb-3 flex h-24 w-24 items-center justify-center rounded-3xl border-2 shadow-xl ${
+              isPending
+                ? 'border-amber-400/50 bg-amber-500/10'
+                : isWin
+                  ? 'border-amber-400/60 bg-amber-500/10'
+                  : isLoss
+                    ? 'border-red-400/50 bg-red-500/10'
+                    : 'border-blue-400/50 bg-blue-500/10'
+            }`}
           >
-            <RotateCcw className="w-4 h-4" />
-            <span>আবার খেলুন (PLAY AGAIN)</span>
-          </button>
+            <span className={`text-5xl ${isPending || isWin ? 'animate-pulse' : ''}`}>
+              {isPractice ? '🎯' : isPending ? '⏳' : isWin ? '🏆' : isLoss ? '😔' : '🤝'}
+            </span>
+          </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            {onViewPendingMatches ? (
-              <button
-                id="result-pending-btn"
-                onClick={onViewPendingMatches}
-                className="py-2.5 bg-[#141c3c] hover:bg-[#1a2550] border border-indigo-800 text-amber-300 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition-all"
-              >
-                <Clock className="w-3.5 h-3.5 text-amber-400" />
-                <span>পেন্ডিং ম্যাচ</span>
-              </button>
+          {/* BIG RESULT */}
+          <h2
+            className={`text-4xl font-black tracking-tight ${
+              isPending
+                ? 'text-amber-400'
+                : isWin
+                  ? 'text-emerald-400'
+                  : isLoss
+                    ? 'text-red-400'
+                    : 'text-blue-400'
+            }`}
+          >
+            {title}
+          </h2>
+
+          <p className="mt-2 text-sm font-semibold text-slate-200">
+            {subtitle}
+          </p>
+
+          {/* Pending information */}
+          {isPending && !isPractice && (
+            <div className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3">
+              <div className="text-xs font-bold text-amber-300">
+                SCORE SUBMITTED
+              </div>
+              <div className="mt-1 text-2xl font-black text-white">
+                {player.score} <span className="text-sm text-slate-400">PTS</span>
+              </div>
+              <p className="mt-1 text-[11px] leading-relaxed text-slate-300">
+                প্রতিপক্ষ ম্যাচ শেষ করলে সার্ভার ফলাফল চূড়ান্ত করবে।
+              </p>
+            </div>
+          )}
+
+          {/* Win prize */}
+          {isWin && !isPractice && (
+            <div className="mt-3 rounded-2xl border border-emerald-400/40 bg-emerald-500/10 p-3">
+              <div className="flex items-center justify-center gap-2 text-emerald-300">
+                <Wallet className="h-5 w-5" />
+                <span className="text-xs font-bold">PRIZE ADDED</span>
+              </div>
+              <div className="mt-1 text-3xl font-black text-emerald-400">
+                ৳{prize}
+              </div>
+              <div className="text-[10px] text-slate-300">
+                আপনার ওয়ালেটে যোগ হয়েছে
+              </div>
+            </div>
+          )}
+
+          {/* Scoreboard */}
+          <div className="mt-4 rounded-2xl border border-indigo-900/70 bg-[#070d1d] p-3">
+            {!isPractice && opponent ? (
+              <div className="grid grid-cols-2 gap-2">
+
+                <div
+                  className={`rounded-xl border p-3 ${
+                    isWin
+                      ? 'border-emerald-400/60 bg-emerald-500/10'
+                      : 'border-indigo-950 bg-[#121935]'
+                  }`}
+                >
+                  <div className="truncate text-[10px] font-bold text-slate-400">
+                    YOU
+                  </div>
+                  <div className="mt-1 text-2xl font-black text-white">
+                    {player.score}
+                  </div>
+                  <div className="text-[9px] text-emerald-400">
+                    {player.linesCleared} Lines
+                  </div>
+                </div>
+
+                <div
+                  className={`rounded-xl border p-3 ${
+                    isLoss
+                      ? 'border-red-400/60 bg-red-500/10'
+                      : 'border-indigo-950 bg-[#121935]'
+                  }`}
+                >
+                  <div className="truncate text-[10px] font-bold text-slate-400">
+                    {opponent.name}
+                  </div>
+                  <div className="mt-1 text-2xl font-black text-white">
+                    {opponent.score}
+                  </div>
+                  <div className="text-[9px] text-slate-400">
+                    {opponent.linesCleared ?? 0} Lines
+                  </div>
+                </div>
+
+              </div>
             ) : (
-              <button
-                id="result-history-btn"
-                onClick={onViewHistory}
-                className="py-2.5 bg-[#141c3c] hover:bg-[#1a2550] border border-indigo-800 text-slate-200 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition-all"
-              >
-                <History className="w-3.5 h-3.5 text-cyan-400" />
-                <span>ম্যাচ হিস্ট্রি</span>
-              </button>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-xl border border-indigo-950 bg-[#121935] p-2">
+                  <div className="text-[9px] font-bold text-slate-400">SCORE</div>
+                  <div className="text-lg font-black text-amber-400">
+                    {player.score}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-indigo-950 bg-[#121935] p-2">
+                  <div className="text-[9px] font-bold text-slate-400">LINES</div>
+                  <div className="text-lg font-black text-emerald-400">
+                    {player.linesCleared}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-indigo-950 bg-[#121935] p-2">
+                  <div className="text-[9px] font-bold text-slate-400">COMBO</div>
+                  <div className="text-lg font-black text-cyan-400">
+                    {player.bestCombo}x
+                  </div>
+                </div>
+              </div>
             )}
 
-            <button
-              id="result-home-btn"
-              onClick={onGoHome}
-              className="py-2.5 bg-[#141c3c] hover:bg-[#1a2550] border border-indigo-800 text-slate-200 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 active:scale-95 transition-all"
-            >
-              <Home className="w-3.5 h-3.5 text-amber-400" />
-              <span>লবি (HOME)</span>
-            </button>
+            {entryFee > 0 && (
+              <div className="mt-3 flex items-center justify-between border-t border-indigo-950 pt-2 text-[11px] text-slate-400">
+                <span>Entry: ৳{entryFee}</span>
+                <span className="font-bold text-amber-400">
+                  Prize: ৳{prize}
+                </span>
+              </div>
+            )}
           </div>
+
+          {/* Buttons */}
+          <div className="mt-4 space-y-2">
+
+            <button
+              id="result-play-again-btn"
+              onClick={onPlayAgain}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 py-3.5 text-sm font-black text-slate-950 shadow-lg transition-transform active:scale-95"
+            >
+              <RotateCcw className="h-4 w-4" />
+              আবার খেলুন • PLAY AGAIN
+            </button>
+
+            <div className="grid grid-cols-2 gap-2">
+
+              {onViewPendingMatches ? (
+                <button
+                  id="result-pending-btn"
+                  onClick={onViewPendingMatches}
+                  className="flex items-center justify-center gap-1.5 rounded-xl border border-indigo-800 bg-[#141c3c] py-2.5 text-xs font-bold text-amber-300"
+                >
+                  <Clock className="h-3.5 w-3.5" />
+                  Pending Matches
+                </button>
+              ) : (
+                <button
+                  id="result-history-btn"
+                  onClick={onViewHistory}
+                  className="flex items-center justify-center gap-1.5 rounded-xl border border-indigo-800 bg-[#141c3c] py-2.5 text-xs font-bold text-slate-200"
+                >
+                  <History className="h-3.5 w-3.5" />
+                  History
+                </button>
+              )}
+
+              <button
+                id="result-home-btn"
+                onClick={onGoHome}
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-indigo-800 bg-[#141c3c] py-2.5 text-xs font-bold text-slate-200"
+              >
+                <Home className="h-3.5 w-3.5 text-amber-400" />
+                HOME
+              </button>
+
+            </div>
+          </div>
+
+          <div className="mt-3 text-[9px] text-slate-500">
+            Server-authoritative match result
+          </div>
+
         </div>
       </div>
     </div>
