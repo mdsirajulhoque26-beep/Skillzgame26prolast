@@ -411,8 +411,14 @@ export const TrafficDodgeGame: React.FC = () => {
   const title = mode === 'multiplayer' ? `${players} Players Multiplayer Pro` : mode === 'pro' ? 'Traffic Dodge Pro Match' : 'Traffic Dodge Practice';
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white pb-24">
-      <div className="max-w-md mx-auto p-3 space-y-3">
+    <div className={`${screen === 'lobby'
+      ? 'min-h-screen bg-slate-950 text-white pb-24'
+      : 'fixed inset-0 z-[9999] min-h-screen overflow-hidden bg-slate-950 text-white'
+    }`}>
+      <div className={`${screen === 'lobby'
+        ? 'max-w-md mx-auto p-3 space-y-3'
+        : 'w-full h-full p-3'
+      }`}>
         <div className="flex items-center justify-between">
           <button onClick={() => { resetLobby(); setCurrentTab('home'); }} className="p-2 rounded-xl bg-slate-800"><ArrowLeft className="w-5 h-5"/></button>
           <div className="text-center"><div className="font-black">{title}</div><div className="text-[10px] text-cyan-300">3 ❤️ • 60s Pause • Same Seed</div></div>
