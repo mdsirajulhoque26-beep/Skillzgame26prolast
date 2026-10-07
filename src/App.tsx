@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
@@ -9,7 +9,7 @@ import { TransactionsScreen } from './components/TransactionsScreen';
 import { HistoryScreen } from './components/HistoryScreen';
 import { ProfileScreen } from './components/ProfileScreen';
 import { BlockPuzzleDuel } from './components/BlockPuzzleDuel';
-import { TrafficDodgeGame } from './components/TrafficDodgeGame';
+const TrafficDodgeGame = lazy(() => import('./components/TrafficDodgeGame').then(m => ({ default: m.TrafficDodgeGame })));
 import { AdminPanel } from './components/AdminPanel';
 
 // Modals
@@ -47,7 +47,7 @@ const MainLayout: React.FC = () => {
         {currentTab === 'transactions' && <TransactionsScreen />}
         {currentTab === 'history' && <HistoryScreen />}
         {currentTab === 'profile' && <ProfileScreen />}
-        {currentTab === 'block_puzzle' && (sessionStorage.getItem('skillz_game_type') === 'traffic_dodge' ? <TrafficDodgeGame /> : <BlockPuzzleDuel />)}
+        {currentTab === 'block_puzzle' && (sessionStorage.getItem('skillz_game_type') === 'traffic_dodge' ? <Suspense fallback={<div className="min-h-[60vh] flex items-center justify-center text-amber-400 font-bold">Traffic Dodge loading...</div>}><TrafficDodgeGame /></Suspense> : <BlockPuzzleDuel />)}
       </main>
 
       {/* Bottom Sticky Navigation */}
