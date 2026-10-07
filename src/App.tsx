@@ -9,6 +9,7 @@ import { TransactionsScreen } from './components/TransactionsScreen';
 import { HistoryScreen } from './components/HistoryScreen';
 import { ProfileScreen } from './components/ProfileScreen';
 import { BlockPuzzleDuel } from './components/BlockPuzzleDuel';
+import { TrafficDodgeGame } from './components/TrafficDodgeGame';
 import { AdminPanel } from './components/AdminPanel';
 
 // Modals
@@ -46,7 +47,7 @@ const MainLayout: React.FC = () => {
         {currentTab === 'transactions' && <TransactionsScreen />}
         {currentTab === 'history' && <HistoryScreen />}
         {currentTab === 'profile' && <ProfileScreen />}
-        {currentTab === 'block_puzzle' && <BlockPuzzleDuel />}
+        {currentTab === 'block_puzzle' && (sessionStorage.getItem('skillz_game_type') === 'traffic_dodge' ? <TrafficDodgeGame /> : <BlockPuzzleDuel />)}
       </main>
 
       {/* Bottom Sticky Navigation */}

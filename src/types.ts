@@ -242,7 +242,7 @@ export interface ResultSubmission {
   userName: string;
   userPhone: string;
   ludoKingName?: string;
-  gameType?: 'block_puzzle';
+  gameType?: 'block_puzzle' | 'traffic_dodge';
   matchId?: string;
   matchNo?: string;
   roomCode?: string;

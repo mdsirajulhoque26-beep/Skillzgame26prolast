@@ -8,7 +8,7 @@ const LOCK_COLLECTION_NAME = `${COLLECTION_NAME}_locks`;
 const STATE_ID = 'main';
 
 const defaults = {
-  users: [], matches: [], blockPuzzleMatches: [], arcadeMatches: [], arcadeQueue: [], leaderboards: [], tournaments: [], tournamentEntries: [], games: [{ id: 'game_block_puzzle', name: 'Block Puzzle Duel', slug: 'block-puzzle', gameType: 'block_puzzle', icon: '🧩', description: '১০x১০ স্মার্ট ব্লক পাজল • Online Duel', entryFee: 100, prizeAmount: 180, active: true, showOnHome: true, displayOrder: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }], transactions: [], depositRequests: [], withdrawRequests: [], resultSubmissions: [], chakaRound: { number: 1, status: 'OPEN', winningSlot: null, endsAt: Date.now() + 25000, spinningUntil: null }, chakaBets: [], chakaHistory: [], chakaSettings: { roundDurationSeconds: 25, minBet: 10, maxBet: 5000, multiplier: 5.5 },
+  users: [], matches: [], blockPuzzleMatches: [], arcadeMatches: [], arcadeQueue: [], leaderboards: [], tournaments: [], tournamentEntries: [], games: [{ id: 'game_block_puzzle', name: 'Block Puzzle Duel', slug: 'block-puzzle', gameType: 'block_puzzle', icon: '🧩', description: '১০x১০ স্মার্ট ব্লক পাজল • Online Duel', entryFee: 100, prizeAmount: 180, active: true, showOnHome: true, displayOrder: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, { id: 'game_traffic_dodge', name: 'Traffic Dodge', slug: 'traffic-dodge', gameType: 'traffic_dodge', icon: '🚗', description: 'Dodge traffic • Collect coins • 3 Lives', entryFee: 20, prizeAmount: 35, active: true, showOnHome: true, displayOrder: 2, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }], transactions: [], depositRequests: [], withdrawRequests: [], resultSubmissions: [], chakaRound: { number: 1, status: 'OPEN', winningSlot: null, endsAt: Date.now() + 25000, spinningUntil: null }, chakaBets: [], chakaHistory: [], chakaSettings: { roundDurationSeconds: 25, minBet: 10, maxBet: 5000, multiplier: 5.5 },
   paymentSettings: {
     bkash: '', bkashAgent: '', nagad: '', rocket: '', upay: '', binanceUsdt: '', bkashAgentEnabled: true, binanceUsdtEnabled: true, depositBkashEnabled: true, depositBkashAgentEnabled: true, depositNagadEnabled: true, depositRocketEnabled: true, depositUpayEnabled: true, depositBinanceUsdtEnabled: true, withdrawBkashEnabled: true, withdrawNagadEnabled: true, withdrawRocketEnabled: true, withdrawUpayEnabled: true, withdrawBinanceUsdtEnabled: true, whatsappSupport: '', telegramLink: '',
     marqueeNotice: 'Welcome to Skillzgame', popupNoticeTitle: 'Notice', popupNoticeText: 'Play fairly and have fun.', proMatchFees: [20, 30, 60, 120, 250, 500], multiplayerProMatches: [{id:'mp_3',players:3,entryFee:20,prizeAmount:40,prizes:[40],active:false,showOnHome:true,displayOrder:1},{id:'mp_5',players:5,entryFee:30,prizeAmount:80,prizes:[80],active:false,showOnHome:true,displayOrder:2},{id:'mp_7',players:7,entryFee:60,prizeAmount:160,prizes:[160],active:false,showOnHome:true,displayOrder:3},{id:'mp_10',players:10,entryFee:120,prizeAmount:300,prizes:[300],active:false,showOnHome:true,displayOrder:4}]
@@ -75,7 +75,12 @@ export async function loadDb() {
       data.games = structuredClone(defaults.games);
     } else {
       const blockPuzzle = data.games.find(g => g.gameType === 'block_puzzle');
-      data.games = blockPuzzle ? [blockPuzzle] : structuredClone(defaults.games);
+      const trafficDodge = data.games.find(g => g.gameType === 'traffic_dodge');
+      const defaultBlockPuzzle = defaults.games.find(g => g.gameType === 'block_puzzle');
+      const defaultTrafficDodge = defaults.games.find(g => g.gameType === 'traffic_dodge');
+      data.games = [blockPuzzle || defaultBlockPuzzle, trafficDodge || defaultTrafficDodge].filter(Boolean);
+      if (!blockPuzzle || !trafficDodge) migrationChanged = true;
+      if (!data.games.length) data.games = structuredClone(defaults.games);
     }
     let migrationChanged = false;
     if (!data.chakaRound) {

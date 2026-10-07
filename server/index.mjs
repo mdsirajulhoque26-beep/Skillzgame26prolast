@@ -534,7 +534,7 @@ async function expireBlockPuzzleMatches(db) {
     const u = db.users.find(x => x.id === session.userId);
     if (u) {
       u.gamingBalance = money(Number(u.gamingBalance || 0) + Number(session.entryFee || 0));
-      db.transactions.unshift(makeTransaction(u.id, 'refund', Number(session.entryFee || 0), `${session.gameType === 'nut_sort' ? 'Nut Sort' : 'Block Puzzle'} Entry Refund`, `No opponent within 24 hours • Match #${session.id.slice(-6)}`, 'match', { matchId: session.id, gameType: session.gameType || 'block_puzzle' }));
+      db.transactions.unshift(makeTransaction(u.id, 'refund', Number(session.entryFee || 0), `${session.gameType === 'traffic_dodge' ? 'Traffic Dodge' : session.gameType === 'nut_sort' ? 'Nut Sort' : 'Block Puzzle'} Entry Refund`, `No opponent within 24 hours • Match #${session.id.slice(-6)}`, 'match', { matchId: session.id, gameType: session.gameType || 'block_puzzle' }));
     }
     session.status = 'REFUNDED';
     session.refunded = true;
@@ -677,7 +677,7 @@ app.post('/api/admin/tournaments', auth, admin, async (req,res) => {
     const status=b.active===false?'INACTIVE':'ACTIVE';
     const startedAt=status==='ACTIVE' ? createdAt : null;
     const endsAt=endMode==='TIME' && startedAt ? new Date(Date.parse(startedAt)+durationMinutes*60000).toISOString() : null;
-    const t={id:id('tourn'),name,gameType:'block_puzzle',entryFee,maxPlayers,prizePool,prizes,status,endMode,durationMinutes:endMode==='TIME'?durationMinutes:null,startedAt,endsAt,showOnHome:b.showOnHome!==false,displayOrder:Number(b.displayOrder)||1,createdAt,updatedAt:createdAt,finalEntries:null,payouts:[],payoutStatus:'NOT_READY',registrationClosed:false};
+    const requestedGameType=safeText(b.gameType||'block_puzzle',40).toLowerCase(); const gameType=requestedGameType==='traffic_dodge'?'traffic_dodge':'block_puzzle'; const t={id:id('tourn'),name,gameType,entryFee,maxPlayers,prizePool,prizes,status,endMode,durationMinutes:endMode==='TIME'?durationMinutes:null,startedAt,endsAt,showOnHome:b.showOnHome!==false,displayOrder:Number(b.displayOrder)||1,createdAt,updatedAt:createdAt,finalEntries:null,payouts:[],payoutStatus:'NOT_READY',registrationClosed:false};
     req.db.tournaments=[...(req.db.tournaments||[]),t]; await saveDb(req.db); res.status(201).json({tournament:publicTournament(req.db,t)});
   } catch(err){res.status(err.statusCode||400).json({message:err?.message||'Tournament তৈরি করা যায়নি।'});}
 });
@@ -734,7 +734,7 @@ app.patch('/api/admin/tournaments/:id', auth, admin, async (req,res) => {
     }
     t.status=nextStatus;
   }
-  if(b.showOnHome!==undefined)t.showOnHome=Boolean(b.showOnHome); if(b.displayOrder!==undefined)t.displayOrder=Number(b.displayOrder)||0;
+  if(b.gameType!==undefined){const requestedGameType=safeText(b.gameType,40).toLowerCase(); t.gameType=requestedGameType==='traffic_dodge'?'traffic_dodge':'block_puzzle';} if(b.showOnHome!==undefined)t.showOnHome=Boolean(b.showOnHome); if(b.displayOrder!==undefined)t.displayOrder=Number(b.displayOrder)||0;
   t.registrationClosed=currentEntries.length>=Number(t.maxPlayers||0); t.updatedAt=now(); await saveDb(req.db); res.json({tournament:publicTournament(req.db,t)});
 });
 app.delete('/api/admin/tournaments/:id', auth, admin, async (req,res) => {
@@ -767,11 +767,11 @@ app.post('/api/tournaments/:id/join', async (req,res) => {
       if(active)return {t,session:active,db,charged:false};
       if(Number(req.user.gamingBalance)<Number(t.entryFee))throw Object.assign(new Error('অপর্যাপ্ত গেমিং ব্যালেন্স! দয়া করে ডিপোজিট করুন।'),{statusCode:400});
       const createdAt=now(), startsAt=createdAt;
-      const session={id:id('bp'),gameSeed:crypto.randomInt(1,2147483646),moveIndex:0,liveState:null,liveUpdatedAt:null,userId:req.user.id,userName:req.user.name,userPhone:req.user.phone,entryFee:t.entryFee,prizeAmount:0,status:'PLAYING',createdAt,startsAt,gameStartedAt:startsAt,pendingUntil:null,refunded:false,tournamentId:t.id,tournamentEntryId:entry.id};
+      const session={id:id('bp'),gameType:t.gameType||'block_puzzle',gameSeed:crypto.randomInt(1,2147483646),moveIndex:0,liveState:null,liveUpdatedAt:null,userId:req.user.id,userName:req.user.name,userPhone:req.user.phone,entryFee:t.entryFee,prizeAmount:0,status:'PLAYING',createdAt,startsAt,gameStartedAt:startsAt,pendingUntil:null,refunded:false,tournamentId:t.id,tournamentEntryId:entry.id};
       req.user.gamingBalance=money(req.user.gamingBalance-t.entryFee); req.user.matchesPlayed=Number(req.user.matchesPlayed||0)+1; db.users=db.users.map(u=>u.id===req.user.id?req.user:u); db.blockPuzzleMatches=[session,...(db.blockPuzzleMatches||[])];
       entry.attempts=Number(entry.attempts||0)+1; entry.lastMatchId=session.id; entry.entryFee=Number(t.entryFee||0);
       t.registrationClosed=db.tournamentEntries.filter(e=>e.tournamentId===t.id).length>=Number(t.maxPlayers); t.updatedAt=now();
-      db.transactions.unshift(makeTransaction(req.user.id,'match_loss',-t.entryFee,'Tournament Entry',`${t.name} • Entry #${entry.entryNumber} • Attempt #${entry.attempts}`,'match',{matchId:session.id,tournamentId:t.id,tournamentEntryId:entry.id,gameType:'block_puzzle_tournament'})); await saveDbPartial(db,['users','tournaments','tournamentEntries','blockPuzzleMatches','transactions']); return {t,session,db,charged:true};
+      db.transactions.unshift(makeTransaction(req.user.id,'match_loss',-t.entryFee,'Tournament Entry',`${t.name} • Entry #${entry.entryNumber} • Attempt #${entry.attempts}`,'match',{matchId:session.id,tournamentId:t.id,tournamentEntryId:entry.id,gameType:`${t.gameType||'block_puzzle'}_tournament`})); await saveDbPartial(db,['users','tournaments','tournamentEntries','blockPuzzleMatches','transactions']); return {t,session,db,charged:true};
     });
     res.status(201).json({tournament:publicTournament(result.db,result.t,req.user.id),match:blockPuzzlePublicMatch(result.session,result.db),user:publicUser(result.db.users.find(u=>u.id===req.user.id)),charged:result.charged});
   } catch(err){res.status(err.statusCode||503).json({message:err?.message||'Tournament Join করা যায়নি।'});}
@@ -873,7 +873,12 @@ app.post('/api/block-puzzle/matches/start', async (req, res) => {
       // V49: skip the full historical expiration scan during startup;
       // matchmaking checks timestamps and cleanup runs separately.
       const requestedGameType = safeText(req.body?.gameType || 'block_puzzle', 40).toLowerCase();
-      const gameType = requestedGameType === 'nut_sort' ? 'nut_sort' : 'block_puzzle';
+      const gameType =
+        requestedGameType === 'nut_sort'
+          ? 'nut_sort'
+          : requestedGameType === 'traffic_dodge'
+            ? 'traffic_dodge'
+            : 'block_puzzle';
       const entryFee = money(Number(req.body?.entryFee));
       const requestedPlayerCount = Math.floor(Number(req.body?.playerCount || 2));
       // 2-player remains the legacy/default duel. Any configured multiplayer count >=3 is allowed.
@@ -933,7 +938,7 @@ app.post('/api/block-puzzle/matches/start', async (req, res) => {
       req.user.matchesPlayed = Number(req.user.matchesPlayed || 0) + 1;
       db.users = db.users.map(u => u.id === req.user.id ? req.user : u);
       db.blockPuzzleMatches = [session, ...(db.blockPuzzleMatches || [])];
-      db.transactions.unshift(makeTransaction(req.user.id, 'match_loss', -entryFee, `${gameType === 'nut_sort' ? 'Nut Sort' : 'Block Puzzle'} Entry`, `${gameType === 'nut_sort' ? 'Nut Sort 1v1' : 'Block Puzzle'} • Match #${session.id.slice(-6)}`, 'match', { matchId: session.id, gameType }));
+      db.transactions.unshift(makeTransaction(req.user.id, 'match_loss', -entryFee, `${gameType === 'traffic_dodge' ? 'Traffic Dodge' : gameType === 'nut_sort' ? 'Nut Sort' : 'Block Puzzle'} Entry`, `${gameType === 'nut_sort' ? 'Nut Sort 1v1' : 'Block Puzzle'} • Match #${session.id.slice(-6)}`, 'match', { matchId: session.id, gameType }));
 
       const join = findJoinableBlockPuzzleMatch(db, session, entryFee, prizeAmount, playerCount, gameType);
       if (join) {
@@ -1791,7 +1796,7 @@ app.post('/api/block-puzzle/matches/:id/refund', auth, async (req, res) => {
       if (session.status !== 'PENDING') throw Object.assign(new Error('এই ম্যাচটি এখন আর রিফান্ড করা যাবে না।'), { statusCode: 409 });
       const u = db.users.find(x => x.id === req.user.id); u.gamingBalance = money(Number(u.gamingBalance || 0) + Number(session.entryFee || 0));
       session.status = 'REFUNDED'; session.refunded = true; session.refundReason = safeText(req.body?.reason, 200) || 'Player cancelled matchmaking'; session.refundedAt = now();
-      db.transactions.unshift(makeTransaction(u.id, 'refund', Number(session.entryFee), `${session.gameType === 'nut_sort' ? 'Nut Sort' : 'Block Puzzle'} Entry Refund`, `${session.refundReason} • Match #${session.id.slice(-6)}`, 'match', { matchId: session.id, gameType: session.gameType || 'block_puzzle' }));
+      db.transactions.unshift(makeTransaction(u.id, 'refund', Number(session.entryFee), `${session.gameType === 'traffic_dodge' ? 'Traffic Dodge' : session.gameType === 'nut_sort' ? 'Nut Sort' : 'Block Puzzle'} Entry Refund`, `${session.refundReason} • Match #${session.id.slice(-6)}`, 'match', { matchId: session.id, gameType: session.gameType || 'block_puzzle' }));
       await saveDb(db); return { session, user: u };
     });
     res.json({ match: blockPuzzlePublicMatch(result.session, { users: [result.user] }), user: publicUser(result.user) });
@@ -2384,7 +2389,7 @@ app.patch('/api/result-submissions/:id', auth, admin, async (req, res) => {
         u.totalWinnings = money(Number(u.totalWinnings || 0) + Number(r.prizeAmount || 0));
         u.matchesWon = Number(u.matchesWon || 0) + 1;
 
-        if (r.gameType === 'block_puzzle') {
+        if (r.gameType === 'block_puzzle' || r.gameType === 'traffic_dodge') {
           const bp = (db.blockPuzzleMatches || []).find(
             m => m.id === r.matchId && m.userId === u.id
           );
@@ -2404,7 +2409,7 @@ app.patch('/api/result-submissions/:id', auth, admin, async (req, res) => {
             u.id,
             'match_win',
             Number(r.prizeAmount || 0),
-            r.gameType === 'block_puzzle' ? 'Block Puzzle Win' : 'Match Win',
+            r.gameType === 'block_puzzle' ? r.gameType === 'traffic_dodge' ? 'Traffic Dodge Win' : 'Block Puzzle Win' : 'Match Win',
             r.gameType === 'block_puzzle'
               ? `Score: ${Number(r.score || 0)} • Admin Approved`
               : `Room ID: ${r.roomCode} • Admin Approved`,
@@ -2417,7 +2422,7 @@ app.patch('/api/result-submissions/:id', auth, admin, async (req, res) => {
             }
           )
         );
-      } else if (r.gameType === 'block_puzzle') {
+      } else if (r.gameType === 'block_puzzle' || r.gameType === 'traffic_dodge') {
         const bp = (db.blockPuzzleMatches || []).find(
           m => m.id === r.matchId && m.userId === r.userId
         );
@@ -2439,7 +2444,7 @@ app.patch('/api/result-submissions/:id', auth, admin, async (req, res) => {
                 u.id,
                 'refund',
                 Number(bp.entryFee || 0),
-                'Block Puzzle Entry Refund',
+                r.gameType === 'traffic_dodge' ? 'Traffic Dodge Entry Refund' : 'Block Puzzle Entry Refund',
                 r.adminNote || 'Score rejected by Admin',
                 'match',
                 { matchId: bp.id, gameType: 'block_puzzle' }
