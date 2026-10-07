@@ -71,6 +71,7 @@ export async function loadDb() {
   const doc = await collection.findOne({ _id: STATE_ID });
   if (doc?.data) {
     const data = { ...cloneDefaults(), ...doc.data };
+    let migrationChanged = false;
     if (!Array.isArray(data.games)) {
       data.games = structuredClone(defaults.games);
     } else {
@@ -82,7 +83,6 @@ export async function loadDb() {
       if (!blockPuzzle || !trafficDodge) migrationChanged = true;
       if (!data.games.length) data.games = structuredClone(defaults.games);
     }
-    let migrationChanged = false;
     if (!data.chakaRound) {
       data.chakaRound = structuredClone(defaults.chakaRound);
       migrationChanged = true;
