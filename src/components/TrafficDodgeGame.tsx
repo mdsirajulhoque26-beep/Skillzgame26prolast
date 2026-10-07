@@ -55,6 +55,8 @@ export const TrafficDodgeGame: React.FC = () => {
   const pauseStartedRef = useRef(0);
   const pauseUsedRef = useRef(0);
  const pauseLimitTimerRef = useRef<number | null>(null);
+  const collisionLockRef = useRef(false);
+  const startTimerRef = useRef<number | null>(null);
   const rngRef = useRef(() => Math.random());
   const steerRef = useRef(0);
   const matchStartRef = useRef(0);
@@ -71,7 +73,14 @@ export const TrafficDodgeGame: React.FC = () => {
 
   const resetGame = useCallback((seed:number) => {
     cancelAnimationFrame(rafRef.current);
+    if (startTimerRef.current !== null) {
+      window.clearTimeout(startTimerRef.current);
+      startTimerRef.current = null;
+    }
     clearObjects();
+    runningRef.current = false;
+    pausedRef.current = false;
+    collisionLockRef.current = false;
     scoreRef.current = 0; coinsRef.current = 0; livesRef.current = 3;
     xRef.current = 50; spawnRef.current = 0; pauseUsedRef.current = 0;
    if (pauseLimitTimerRef.current !== null) {
@@ -114,10 +123,19 @@ export const TrafficDodgeGame: React.FC = () => {
   }, [bestScore]);
 
   const loseLife = useCallback(() => {
+    if (collisionLockRef.current) return;
+
+    collisionLockRef.current = true;
+    runningRef.current = false;
+    pausedRef.current = true;
+    cancelAnimationFrame(rafRef.current);
+
     livesRef.current -= 1;
     setLives(livesRef.current);
     clearObjects();
-    xRef.current = 50; paintCar();
+    xRef.current = 50;
+    paintCar();
+
     if (livesRef.current <= 0) {
       finishLocal('Game Over — 3 lives used.');
       return;
@@ -134,6 +152,7 @@ export const TrafficDodgeGame: React.FC = () => {
     const coin = rngRef.current() < 0.30;
     const el = document.createElement('div');
     el.style.position = 'absolute';
+    el.dataset.trafficItem = 'true';
     el.style.left = `${lane}%`;
     el.style.top = '-80px';
     el.style.transform = 'translateX(-50%)';
@@ -161,8 +180,15 @@ export const TrafficDodgeGame: React.FC = () => {
       paintCar();
     }
     const elapsed = Math.max(0, t - matchStartRef.current);
-    const speed = Math.min(12, 5 + scoreRef.current / 220);
-    if (spawnRef.current > 620) { spawnRef.current = 0; spawn(); }
+    const speed = Math.min(
+      mode === 'practice' ? 10 : 8,
+      4.5 + scoreRef.current / 300
+    );
+    const spawnInterval = mode === 'practice' ? 620 : 720;
+    if (spawnRef.current > spawnInterval) {
+      spawnRef.current = 0;
+      spawn();
+    }
 
     for (const lane of Array.from(rootRef.current?.querySelectorAll('.traffic-lane') || [])) {
       const node = lane as HTMLElement;
@@ -204,7 +230,14 @@ export const TrafficDodgeGame: React.FC = () => {
     setMatchSeed(seed);
     setRemaining(180);
     setScreen('countdown');
-    window.setTimeout(() => {
+
+    if (startTimerRef.current !== null) {
+      window.clearTimeout(startTimerRef.current);
+    }
+
+    startTimerRef.current = window.setTimeout(() => {
+      startTimerRef.current = null;
+      cancelAnimationFrame(rafRef.current);
       runningRef.current = true; pausedRef.current = false;
       matchStartRef.current = performance.now();
       lastRef.current = performance.now();
@@ -259,8 +292,15 @@ export const TrafficDodgeGame: React.FC = () => {
       finishLocal('60-second Pause limit reached — submit your score.');
       return;
     }
-    pausedRef.current = false; pauseStartedRef.current = 0; lastRef.current = performance.now();
-    setScreen('playing'); rafRef.current = requestAnimationFrame(loop);
+    clearObjects();
+    collisionLockRef.current = false;
+    pausedRef.current = false;
+    runningRef.current = true;
+    pauseStartedRef.current = 0;
+    lastRef.current = performance.now();
+    cancelAnimationFrame(rafRef.current);
+    setScreen('playing');
+    rafRef.current = requestAnimationFrame(loop);
   }, [finishLocal, loop, matchId, resumeBlockPuzzleMatch]);
 
   const submit = useCallback(async () => {
@@ -279,7 +319,13 @@ export const TrafficDodgeGame: React.FC = () => {
         if (Number(cfg.players) >= 3) { setMode('multiplayer'); setPlayers(Number(cfg.players)); setFee(Number(cfg.entryFee || fee)); }
       } catch {}
     }
-    return () => cancelAnimationFrame(rafRef.current);
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      if (startTimerRef.current !== null) {
+        window.clearTimeout(startTimerRef.current);
+        startTimerRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
