@@ -23,7 +23,7 @@ function seeded(seed:number) {
 }
 
 export const TrafficDodgeGame: React.FC = () => {
-  const { user, setCurrentTab, paymentSettings, startBlockPuzzleMatch, getBlockPuzzleMatchStatus, pauseBlockPuzzleMatch, resumeBlockPuzzleMatch, submitBlockPuzzleResult, getMyPendingGames } = useApp();
+  const { user, setCurrentTab, paymentSettings, startBlockPuzzleMatch, getBlockPuzzleMatchStatus, pauseBlockPuzzleMatch, resumeBlockPuzzleMatch, submitBlockPuzzleResult, getPendingGames, getMatchHistory } = useApp();
   const [mode, setMode] = useState<Mode>('practice');
   const [fee, setFee] = useState(Number(paymentSettings.proMatchFees?.[0] || 20));
   const [players, setPlayers] = useState(2);
