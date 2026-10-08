@@ -79,8 +79,19 @@ export const HomeScreen: React.FC = () => {
   const joinTournament = async (t:any) => {
     if (joiningTournament) return;
     setJoiningTournament(t.id);
-    // Enter Block Puzzle immediately. The game screen will pick up the
-    // newly-created tournament match from the server as soon as it exists.
+    // Open the correct game for this Tournament.
+    // Traffic Dodge/Car tournaments must never fall back to Block Puzzle.
+    const tournamentGameType = String(t.gameType || 'block_puzzle').toLowerCase();
+    const isTrafficTournament =
+      tournamentGameType === 'traffic_dodge' ||
+      tournamentGameType === 'traffic' ||
+      tournamentGameType === 'car' ||
+      tournamentGameType === 'car_dodge';
+
+    sessionStorage.setItem(
+      'skillz_game_type',
+      isTrafficTournament ? 'traffic_dodge' : 'block_puzzle'
+    );
     sessionStorage.setItem('skillz_tournament_id', String(t.id));
     sessionStorage.removeItem('skillz_tournament_match_id');
     sessionStorage.setItem('skillz_tournament_immediate', '1');
