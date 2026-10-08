@@ -279,6 +279,56 @@ export const TrafficDodgeGame: React.FC = () => {
 
   const startPractice = () => startRun(Math.floor(Math.random() * 2147483646) + 1, '');
 
+  // Tournament boot: HomeScreen has already joined the tournament and stored
+  // the tournament/match IDs. Start Traffic Dodge using the server match seed
+  // without charging the entry fee again.
+  const tournamentStartedRef = useRef(false);
+
+  useEffect(() => {
+    let timer: number | null = null;
+
+    const bootTournament = async () => {
+      if (tournamentStartedRef.current) return;
+
+      const tournamentId = sessionStorage.getItem('skillz_tournament_id') || '';
+      const storedMatchId = sessionStorage.getItem('skillz_tournament_match_id') || '';
+
+      if (!tournamentId || !storedMatchId) return;
+
+      try {
+        const m = await getBlockPuzzleMatchStatus(storedMatchId);
+        if (!m) return;
+
+        const serverSeed = Number(
+          (m as any).gameSeed ??
+          (m as any).match?.gameSeed ??
+          0
+        );
+
+        if (!Number.isFinite(serverSeed) || serverSeed <= 0) return;
+
+        tournamentStartedRef.current = true;
+        setMode('pro');
+        setPlayers(2);
+        setMatchId(String(storedMatchId));
+        setMessage('');
+        startRun(serverSeed, String(storedMatchId));
+      } catch (error) {
+        console.error('Traffic Tournament boot error:', error);
+      }
+    };
+
+    void bootTournament();
+
+    timer = window.setInterval(() => {
+      void bootTournament();
+    }, 700);
+
+    return () => {
+      if (timer !== null) window.clearInterval(timer);
+    };
+  }, [getBlockPuzzleMatchStatus, startRun]);
+
   const doPause = useCallback(async () => {
     if (!runningRef.current) return;
     if (pauseUsedRef.current >= MAX_PAUSE_MS) { setMessage('আপনার 60 সেকেন্ড Pause limit শেষ।'); return; }
