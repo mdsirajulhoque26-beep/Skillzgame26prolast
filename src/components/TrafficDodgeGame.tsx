@@ -13,49 +13,6 @@ const LANES = [25, 50, 75];
 
 function seeded(seed:number) {
   let s = (Math.floor(seed) || 1) >>> 0;
-  <style>{`
-    @keyframes fall {
-      0% { transform: translateY(-60px) rotate(0deg); opacity: 0; }
-      10% { opacity: 1; }
-      100% { transform: translateY(110vh) rotate(360deg); opacity: 0; }
-    }
-  `}</style>
-
-  const handleTournamentPlayAgain = async () => {
-    if (!tournamentId) return;
-
-    setTournamentLoading(true);
-
-    try {
-      const data = await (await import('../services/backendApi')).backendApi.joinTournament(tournamentId);
-      const m = data?.match;
-
-      sessionStorage.setItem('skillz_tournament_id', String(tournamentId));
-      sessionStorage.setItem('skillz_tournament_match_id', String(m?.id || ''));
-
-      setTournamentData(data?.tournament || tournamentData);
-      tournamentRef.current = true;
-      tournamentStartedRef.current = true;
-      setMode('pro');
-      setPlayers(2);
-
-      const seed = Number(m?.gameSeed || 0);
-      if (!m?.id || !seed) {
-        setMessage('Tournament game শুরু করা যায়নি।');
-        setScreen('lobby');
-        return;
-      }
-
-      setMatchId(String(m.id));
-      startRun(seed, String(m.id));
-    } catch (e:any) {
-      setMessage(e?.message || 'Tournament আবার শুরু করা যায়নি।');
-      setScreen('lobby');
-    } finally {
-      setTournamentLoading(false);
-    }
-  };
-
   return () => {
     s += 0x6D2B79F5;
     let t = s;
@@ -82,6 +39,51 @@ export const TrafficDodgeGame: React.FC = () => {
   const [tournamentData, setTournamentData] = useState<any>(null);
   const [tournamentLoading, setTournamentLoading] = useState(false);
   const tournamentRef = useRef(false);
+  const handleTournamentPlayAgain = async () => {
+    if (!tournamentId) return;
+
+    setTournamentLoading(true);
+
+    try {
+      const api = (await import('../services/backendApi')).backendApi;
+      const data = await api.joinTournament(tournamentId);
+      const m = data?.match;
+
+      sessionStorage.setItem('skillz_tournament_id', String(tournamentId));
+      sessionStorage.setItem(
+        'skillz_tournament_match_id',
+        String(m?.id || '')
+      );
+
+      if (data?.tournament) {
+        setTournamentData(data.tournament);
+      }
+
+      tournamentRef.current = true;
+      tournamentStartedRef.current = true;
+      setMode('pro');
+      setPlayers(2);
+
+      const seed = Number(m?.gameSeed || 0);
+
+      if (!m?.id || !seed) {
+        setMessage('Tournament game শুরু করা যায়নি।');
+        setScreen('lobby');
+        return;
+      }
+
+      setMatchId(String(m.id));
+      setMessage('');
+      startRun(seed, String(m.id));
+    } catch (e:any) {
+      setMessage(e?.message || 'Tournament আবার শুরু করা যায়নি।');
+      setScreen('lobby');
+    } finally {
+      setTournamentLoading(false);
+    }
+  };
+
+
   const [opponent, setOpponent] = useState<any>(null);
   const [outcome, setOutcome] = useState<'WON'|'LOST'|'DRAW'|'PENDING'|null>(null);
   const [pendingHistory, setPendingHistory] = useState<any[]>([]);
