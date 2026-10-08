@@ -96,10 +96,10 @@ export const HomeScreen: React.FC = () => {
     sessionStorage.removeItem('skillz_tournament_match_id');
     sessionStorage.setItem('skillz_tournament_immediate', '1');
     sessionStorage.setItem('skillz_tournament_entry_fee', String(Number(t.entryFee || 0)));
-    setCurrentTab('block_puzzle');
     try {
       const data = await backendApi.joinTournament(t.id);
       sessionStorage.setItem('skillz_tournament_match_id', String(data.match?.id || ''));
+      setCurrentTab('block_puzzle');
     } catch (e:any) {
       sessionStorage.removeItem('skillz_tournament_immediate');
       sessionStorage.removeItem('skillz_tournament_match_id');

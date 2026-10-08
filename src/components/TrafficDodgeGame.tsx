@@ -478,7 +478,6 @@ export const TrafficDodgeGame: React.FC = () => {
 
       setTournamentId(id);
       setTournamentLoading(true);
-      setScreen('tournament_rank');
 
       try {
         const data = await (await import('../services/backendApi')).backendApi.tournament(id);
@@ -489,6 +488,7 @@ export const TrafficDodgeGame: React.FC = () => {
         console.error('Traffic Tournament rank refresh error:', e);
       } finally {
         setTournamentLoading(false);
+        setScreen('tournament_rank');
       }
 
       return;
