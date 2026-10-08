@@ -87,6 +87,7 @@ export const TrafficDodgeGame: React.FC = () => {
   const [opponent, setOpponent] = useState<any>(null);
   const [outcome, setOutcome] = useState<'WON'|'LOST'|'DRAW'|'PENDING'|null>(null);
   const [pendingHistory, setPendingHistory] = useState<any[]>([]);
+  const [trafficHistory, setTrafficHistory] = useState<any[]>([]);
   const [historyView, setHistoryView] = useState<'pending'|'history'|null>(null);
   const [message, setMessage] = useState('');
   const [starting, setStarting] = useState(false);
@@ -438,18 +439,25 @@ export const TrafficDodgeGame: React.FC = () => {
 
   const refreshTrafficHistory = useCallback(async () => {
     try {
-      const items = await getMyPendingGames();
+      const [pendingItems, historyItems] = await Promise.all([
+        getPendingGames(),
+        getMatchHistory()
+      ]);
 
-      const trafficOnly = (items || []).filter((m: any) => {
-        const gt = String(m.gameType || '').toLowerCase();
-        return gt === 'traffic_dodge';
-      });
+      const isTraffic = (m: any) => {
+        const gt = String(m?.gameType || '').toLowerCase();
+        return gt === 'traffic_dodge' ||
+          gt === 'traffic' ||
+          gt === 'car' ||
+          gt === 'car_dodge';
+      };
 
-      setPendingHistory(trafficOnly);
+      setPendingHistory((pendingItems || []).filter(isTraffic));
+      setTrafficHistory((historyItems || []).filter(isTraffic));
     } catch (error) {
       console.error('Traffic pending/history refresh error:', error);
     }
-  }, [getMyPendingGames]);
+  }, [getPendingGames, getMatchHistory]);
 
   useEffect(() => {
     void refreshTrafficHistory();
@@ -945,12 +953,12 @@ export const TrafficDodgeGame: React.FC = () => {
                           </div>
 
                           <div className="max-h-48 space-y-2 overflow-y-auto text-xs text-slate-300">
-                            {pendingHistory.length === 0 ? (
+                            {(historyView === 'pending' ? pendingHistory : trafficHistory).length === 0 ? (
                               <div className="py-4 text-center text-slate-500">
                                 No records found.
                               </div>
                             ) : (
-                              pendingHistory.map((item: any, index: number) => (
+                              (historyView === 'pending' ? pendingHistory : trafficHistory).map((item: any, index: number) => (
                                 <div key={item?.id || index} className="rounded-xl bg-white/5 p-3">
                                   <div className="font-bold">
                                     {item?.opponentName || item?.userName || 'Match'}

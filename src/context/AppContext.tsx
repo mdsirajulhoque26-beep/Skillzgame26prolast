@@ -46,6 +46,8 @@ interface AppContextType {
   getActiveBlockPuzzleMatch: () => Promise<any | null>;
   getMyBlockPuzzleMatches: () => Promise<any[]>;
   getMyPendingGames: () => Promise<any[]>;
+  getPendingGames: () => Promise<any[]>;
+  getMatchHistory: () => Promise<any[]>;
   getBlockPuzzleMatchStatus: (matchId: string) => Promise<any | null>;
   pauseBlockPuzzleMatch: (matchId: string) => Promise<{ success: boolean; message: string; match?: any }>;
   resumeBlockPuzzleMatch: (matchId: string) => Promise<{ success: boolean; message: string; match?: any }>;
@@ -379,6 +381,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return data.items || [];
   };
 
+  const getPendingGames = async () => {
+    const data = await backendApi.pendingGames();
+    return data.items || [];
+  };
+
+  const getMatchHistory = async () => {
+    const data = await backendApi.history();
+    return data.items || [];
+  };
+
   const getBlockPuzzleMatchStatus = async (matchId: string) => {
     try {
       const data = await backendApi.blockPuzzleMatchStatus(matchId);
@@ -538,6 +550,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getActiveBlockPuzzleMatch,
         getMyBlockPuzzleMatches,
         getMyPendingGames,
+        getPendingGames,
+        getMatchHistory,
         getBlockPuzzleMatchStatus,
         pauseBlockPuzzleMatch,
         resumeBlockPuzzleMatch,
