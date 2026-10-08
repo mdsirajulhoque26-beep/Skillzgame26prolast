@@ -368,6 +368,19 @@ export const TrafficDodgeGame: React.FC = () => {
         setPlayers(2);
         setMatchId(String(storedMatchId));
         setMessage('');
+
+        // Load Tournament data before the game starts so the Rank List
+        // is ready immediately after score submission.
+        try {
+          const api = (await import('../services/backendApi')).backendApi;
+          const tournamentResponse = await api.tournament(String(tournamentId));
+          if (tournamentResponse?.tournament) {
+            setTournamentData(tournamentResponse.tournament);
+          }
+        } catch (rankError) {
+          console.error('Traffic Tournament data load error:', rankError);
+        }
+
         startRun(serverSeed, String(storedMatchId));
       } catch (error) {
         console.error('Traffic Tournament boot error:', error);
