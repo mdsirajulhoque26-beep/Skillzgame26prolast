@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Pause, Play, RotateCcw, Trophy, Coins, Heart, Car, Zap } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { blockAudio } from '../utils/blockPuzzleAudio';
 
 type Mode = 'practice' | 'pro' | 'multiplayer';
 type Item = { id:number; x:number; y:number; coin:boolean; el:HTMLDivElement };
@@ -11,6 +12,14 @@ const LANES = [25, 50, 75];
 
 function seeded(seed:number) {
   let s = (Math.floor(seed) || 1) >>> 0;
+  <style>{`
+    @keyframes fall {
+      0% { transform: translateY(-60px) rotate(0deg); opacity: 0; }
+      10% { opacity: 1; }
+      100% { transform: translateY(110vh) rotate(360deg); opacity: 0; }
+    }
+  `}</style>
+
   return () => {
     s += 0x6D2B79F5;
     let t = s;
@@ -21,7 +30,7 @@ function seeded(seed:number) {
 }
 
 export const TrafficDodgeGame: React.FC = () => {
-  const { user, setCurrentTab, paymentSettings, startBlockPuzzleMatch, getBlockPuzzleMatchStatus, pauseBlockPuzzleMatch, resumeBlockPuzzleMatch, submitBlockPuzzleResult } = useApp();
+  const { user, setCurrentTab, paymentSettings, startBlockPuzzleMatch, getBlockPuzzleMatchStatus, pauseBlockPuzzleMatch, resumeBlockPuzzleMatch, submitBlockPuzzleResult, getMyPendingGames } = useApp();
   const [mode, setMode] = useState<Mode>('practice');
   const [fee, setFee] = useState(Number(paymentSettings.proMatchFees?.[0] || 20));
   const [players, setPlayers] = useState(2);
@@ -34,6 +43,9 @@ export const TrafficDodgeGame: React.FC = () => {
   const [matchId, setMatchId] = useState('');
   const [matchSeed, setMatchSeed] = useState(1);
   const [opponent, setOpponent] = useState<any>(null);
+  const [outcome, setOutcome] = useState<'WON'|'LOST'|'DRAW'|'PENDING'|null>(null);
+  const [pendingHistory, setPendingHistory] = useState<any[]>([]);
+  const [historyView, setHistoryView] = useState<'pending'|'history'|null>(null);
   const [message, setMessage] = useState('');
   const [starting, setStarting] = useState(false);
  const [bestScore, setBestScore] = useState(() =>
@@ -303,13 +315,57 @@ export const TrafficDodgeGame: React.FC = () => {
     rafRef.current = requestAnimationFrame(loop);
   }, [finishLocal, loop, matchId, resumeBlockPuzzleMatch]);
 
+  const refreshTrafficHistory = useCallback(async () => {
+    try {
+      const items = await getMyPendingGames();
+
+      const trafficOnly = (items || []).filter((m: any) => {
+        const gt = String(m.gameType || '').toLowerCase();
+        return gt === 'traffic_dodge';
+      });
+
+      setPendingHistory(trafficOnly);
+    } catch (error) {
+      console.error('Traffic pending/history refresh error:', error);
+    }
+  }, [getMyPendingGames]);
+
+  useEffect(() => {
+    void refreshTrafficHistory();
+
+    const timer = window.setInterval(() => {
+      void refreshTrafficHistory();
+    }, 5000);
+
+    return () => window.clearInterval(timer);
+  }, [refreshTrafficHistory]);
+
+
   const submit = useCallback(async () => {
-    runningRef.current = false; pausedRef.current = false; cancelAnimationFrame(rafRef.current);
-    if (!matchId) { setScreen('result'); setMessage(`Score ${scoreRef.current} • ${coinsRef.current} coins`); return; }
+    runningRef.current = false;
+    pausedRef.current = false;
+    cancelAnimationFrame(rafRef.current);
+
+    if (!matchId) {
+      setOutcome(null);
+      setScreen('result');
+      setMessage(`Score ${scoreRef.current} • ${coinsRef.current} coins`);
+      return;
+    }
+
     const r = await submitBlockPuzzleResult(matchId, scoreRef.current, 0);
-    if (!r.success) { setMessage(r.message); setScreen('submit'); return; }
-    setScreen('result'); setMessage(`Score ${scoreRef.current} submitted successfully.`);
-  }, [matchId, submitBlockPuzzleResult]);
+
+    if (!r.success) {
+      setMessage(r.message);
+      setScreen('submit');
+      return;
+    }
+
+    setOutcome('PENDING');
+    setScreen('result');
+    setMessage('Score submitted. Waiting for opponent result.');
+    void refreshTrafficHistory();
+  }, [matchId, submitBlockPuzzleResult, refreshTrafficHistory]);
 
   useEffect(() => {
     const raw = sessionStorage.getItem('skillz_multiplayer_pro_config');
@@ -330,19 +386,48 @@ export const TrafficDodgeGame: React.FC = () => {
 
   useEffect(() => {
     if (!matchId || screen === 'lobby' || mode === 'practice') return;
+
     const timer = window.setInterval(async () => {
-      const m = await getBlockPuzzleMatchStatus(matchId);
-      if (!m) return;
-      if (m.opponent) setOpponent(m.opponent);
-      if (m.status === 'COMPLETED') {
-        runningRef.current = false;
-        setOpponent(m.opponent || null);
-        setScreen('result');
-        setMessage(m.outcome === 'WON' ? '🏆 You won!' : m.outcome === 'DRAW' ? '🤝 Draw' : 'Result completed');
+      try {
+        const m = await getBlockPuzzleMatchStatus(matchId);
+        if (!m) return;
+
+        if (m.opponent) {
+          setOpponent(m.opponent);
+        }
+
+        if (m.status === 'COMPLETED') {
+          runningRef.current = false;
+
+          const finalOutcome =
+            m.outcome === 'WON'
+              ? 'WON'
+              : m.outcome === 'LOST'
+                ? 'LOST'
+                : 'DRAW';
+
+          setOpponent(m.opponent || null);
+          setOutcome(finalOutcome);
+
+          if (finalOutcome === 'WON') {
+            blockAudio.playWin();
+            setMessage('🏆 You won!');
+          } else if (finalOutcome === 'LOST') {
+            setMessage('You lost');
+          } else {
+            setMessage('🤝 Draw');
+          }
+
+          setScreen('result');
+          void refreshTrafficHistory();
+        }
+      } catch (error) {
+        console.error('Traffic match polling error:', error);
       }
     }, 2000);
+
     return () => window.clearInterval(timer);
-  }, [getBlockPuzzleMatchStatus, matchId, mode, screen]);
+  }, [getBlockPuzzleMatchStatus, matchId, mode, screen, refreshTrafficHistory]);
 
   useEffect(() => {
     const auto = () => { if (document.hidden || !document.hasFocus()) doPause(); };
@@ -471,8 +556,170 @@ export const TrafficDodgeGame: React.FC = () => {
             </div>
             {screen === 'countdown' && <div className="absolute inset-0 z-40 grid place-items-center bg-black/70 text-4xl font-black">GO!</div>}
             {(screen === 'paused' || screen === 'submit' || screen === 'result') && (
-              <div className="absolute inset-0 z-50 grid place-items-center bg-black/75 p-6 text-center">
-                <div className="space-y-3"><div className="text-3xl font-black">{screen==='paused'?'⏸ PAUSED':screen==='result'?'🏆 RESULT':'🏁 SUBMIT SCORE'}</div><p className="text-sm text-slate-300">{message || `Score ${score}`}</p>{screen==='paused'&&<p className="text-xs text-amber-300">Pause used: {pauseUsed}s / 60s</p>}{screen==='paused'&&<button onClick={doResume} className="rounded-xl bg-cyan-400 text-slate-950 px-6 py-3 font-black">RESUME</button>}{screen==='submit'&&<button onClick={submit} className="rounded-xl bg-emerald-500 px-6 py-3 font-black">SUBMIT SCORE</button>}{screen==='result'&&<><div className="text-xs text-slate-400">{opponent?.name ? `Opponent: ${opponent.name} • ${opponent.score ?? '?'} pts` : 'Settlement is processing.'}</div><button onClick={resetLobby} className="rounded-xl bg-cyan-400 text-slate-950 px-6 py-3 font-black">PLAY AGAIN</button></>}</div>
+              <div className="absolute inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/80 p-4 text-center">
+
+                {screen === 'result' && outcome === 'WON' && (
+                  <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                    {[...Array(18)].map((_, i) => (
+                      <span
+                        key={i}
+                        className="absolute -top-12 text-3xl font-black animate-[fall_2.8s_linear_infinite]"
+                        style={{
+                          left: `${(i * 17) % 100}%`,
+                          animationDelay: `${(i % 6) * 0.25}s`
+                        }}
+                      >
+                        {i % 2 === 0 ? '$' : '💵'}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="relative w-full max-w-sm rounded-3xl border-2 border-cyan-400/40 bg-[#0b1228] p-6 shadow-2xl">
+
+                  {screen === 'paused' && (
+                    <div className="space-y-4">
+                      <div className="text-3xl font-black">⏸ PAUSED</div>
+                      <p className="text-sm text-slate-300">{message || `Score ${score}`}</p>
+                      <p className="text-xs text-amber-300">Pause used: {pauseUsed}s / 60s</p>
+                      <button onClick={doResume} className="rounded-xl bg-cyan-400 px-6 py-3 font-black text-slate-950">
+                        RESUME
+                      </button>
+                    </div>
+                  )}
+
+                  {screen === 'submit' && (
+                    <div className="space-y-4">
+                      <div className="text-3xl font-black">🏁 SUBMIT SCORE</div>
+                      <div className="text-2xl font-black text-cyan-300">{score} POINTS</div>
+                      <button onClick={submit} className="rounded-xl bg-emerald-500 px-8 py-3 font-black">
+                        SUBMIT SCORE
+                      </button>
+                    </div>
+                  )}
+
+                  {screen === 'result' && (
+                    <div className="space-y-4">
+
+                      {outcome === 'WON' ? (
+                        <>
+                          <div className="text-6xl font-black tracking-tight text-yellow-300">
+                            YOU WON!
+                          </div>
+                          <div className="text-lg font-black text-emerald-300">
+                            🎉 Congratulations! 🎉
+                          </div>
+                        </>
+                      ) : outcome === 'PENDING' ? (
+                        <>
+                          <div className="text-4xl font-black text-amber-300">
+                            MATCH PENDING
+                          </div>
+                          <div className="text-sm text-slate-300">
+                            Your score has been submitted.
+                          </div>
+                          <div className="text-2xl font-black text-cyan-300">
+                            {score} POINTS
+                          </div>
+                        </>
+                      ) : outcome === 'LOST' ? (
+                        <>
+                          <div className="text-5xl font-black text-red-400">
+                            YOU LOST
+                          </div>
+                          <div className="text-sm text-slate-300">
+                            Better luck next time!
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-5xl font-black text-slate-200">
+                            🤝 DRAW
+                          </div>
+                        </>
+                      )}
+
+                      <div className="rounded-2xl bg-white/5 p-3 text-sm">
+                        <div className="font-bold text-slate-300">
+                          Your Score: <span className="text-white">{score}</span>
+                        </div>
+
+                        {opponent?.name && (
+                          <div className="mt-1 font-bold text-slate-300">
+                            Opponent: {opponent.name} • {opponent.score ?? '?'} pts
+                          </div>
+                        )}
+
+                        <div className="mt-1 text-xs text-slate-400">
+                          Entry Fee: {fee} • Prize: {Math.max(0, Number(paymentSettings.proMatchPrize?.[fee] || 0))}
+                        </div>
+                      </div>
+
+                      {outcome === 'PENDING' && (
+                        <button
+                          onClick={() => setHistoryView('pending')}
+                          className="w-full rounded-xl bg-amber-400 px-5 py-3 font-black text-slate-950"
+                        >
+                          ⏳ PENDING
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => setHistoryView('history')}
+                        className="w-full rounded-xl border border-white/20 bg-white/10 px-5 py-3 font-black"
+                      >
+                        📜 HISTORY
+                      </button>
+
+                      <button
+                        onClick={resetLobby}
+                        className="w-full rounded-xl bg-cyan-400 px-6 py-3 font-black text-slate-950"
+                      >
+                        PLAY AGAIN
+                      </button>
+
+                      {historyView && (
+                        <div className="mt-3 rounded-2xl border border-white/10 bg-black/30 p-4 text-left">
+                          <div className="mb-2 text-lg font-black">
+                            {historyView === 'pending' ? '⏳ MATCH PENDING' : '📜 MATCH HISTORY'}
+                          </div>
+
+                          <div className="max-h-48 space-y-2 overflow-y-auto text-xs text-slate-300">
+                            {pendingHistory.length === 0 ? (
+                              <div className="py-4 text-center text-slate-500">
+                                No records found.
+                              </div>
+                            ) : (
+                              pendingHistory.map((item: any, index: number) => (
+                                <div key={item?.id || index} className="rounded-xl bg-white/5 p-3">
+                                  <div className="font-bold">
+                                    {item?.opponentName || item?.userName || 'Match'}
+                                  </div>
+                                  <div>
+                                    Score: {item?.score ?? item?.userScore ?? 0}
+                                    {item?.opponentScore != null
+                                      ? ` • Opponent: ${item.opponentScore}`
+                                      : ''}
+                                  </div>
+                                  <div className="text-slate-500">
+                                    {item?.status || item?.result || 'PENDING'}
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+
+                          <button
+                            onClick={() => setHistoryView(null)}
+                            className="mt-3 w-full rounded-xl bg-white/10 px-4 py-2 font-bold"
+                          >
+                            CLOSE
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

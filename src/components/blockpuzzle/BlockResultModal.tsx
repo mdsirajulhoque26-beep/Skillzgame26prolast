@@ -73,6 +73,33 @@ export const BlockResultModal: React.FC<BlockResultModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in select-none">
       <div className="relative w-full max-w-sm overflow-hidden rounded-3xl border-2 border-indigo-500/50 bg-[#0b1228] shadow-2xl">
+          {isWin && !isPractice && (
+            <>
+              <style>{`
+                @keyframes blockWinMoneyFall {
+                  0% { transform: translateY(-70px) rotate(0deg); opacity: 0; }
+                  10% { opacity: 1; }
+                  100% { transform: translateY(520px) rotate(360deg); opacity: 0; }
+                }
+              `}</style>
+              <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+                {[...Array(20)].map((_, i) => (
+                  <span
+                    key={i}
+                    className="absolute -top-10 text-3xl font-black"
+                    style={{
+                      left: `${(i * 19) % 100}%`,
+                      animation: `blockWinMoneyFall 2.8s linear ${((i % 7) * 0.22).toFixed(2)}s infinite`,
+                    }}
+                  >
+                    {i % 2 === 0 ? '$' : '💵'}
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
+
+
 
         {/* Ambient glow */}
         <div
@@ -114,7 +141,7 @@ export const BlockResultModal: React.FC<BlockResultModalProps> = ({
 
           {/* BIG RESULT */}
           <h2
-            className={`text-4xl font-black tracking-tight ${
+            className={`${isWin ? 'text-6xl sm:text-7xl' : 'text-4xl'} font-black tracking-tight ${
               isPending
                 ? 'text-amber-400'
                 : isWin
