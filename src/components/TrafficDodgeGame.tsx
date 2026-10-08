@@ -23,7 +23,7 @@ function seeded(seed:number) {
 }
 
 export const TrafficDodgeGame: React.FC = () => {
-  const { user, setCurrentTab, paymentSettings, startBlockPuzzleMatch, getBlockPuzzleMatchStatus, pauseBlockPuzzleMatch, resumeBlockPuzzleMatch, submitBlockPuzzleResult, getPendingGames, getMatchHistory } = useApp();
+  const { user, setCurrentTab, paymentSettings, startBlockPuzzleMatch, getBlockPuzzleMatchStatus, pauseBlockPuzzleMatch, resumeBlockPuzzleMatch, submitBlockPuzzleResult, getMatchHistory } = useApp();
   const [mode, setMode] = useState<Mode>('practice');
   const [fee, setFee] = useState(Number(paymentSettings.proMatchFees?.[0] || 20));
   const [players, setPlayers] = useState(2);
@@ -439,10 +439,9 @@ export const TrafficDodgeGame: React.FC = () => {
 
   const refreshTrafficHistory = useCallback(async () => {
     try {
-      const [pendingItems, historyItems] = await Promise.all([
-        getPendingGames(),
-        getMatchHistory()
-      ]);
+      // Use the same server-backed /history source as Block Puzzle.
+      // It contains newly submitted PENDING matches as well as completed matches.
+      const historyItems = await getMatchHistory();
 
       const isTraffic = (m: any) => {
         const gt = String(m?.gameType || '').toLowerCase();
@@ -452,12 +451,73 @@ export const TrafficDodgeGame: React.FC = () => {
           gt === 'car_dodge';
       };
 
-      setPendingHistory((pendingItems || []).filter(isTraffic));
-      setTrafficHistory((historyItems || []).filter(isTraffic));
+      const mapped = (historyItems || [])
+        .filter(isTraffic)
+        .map((m: any) => {
+          const rawStatus = String(m?.status || '').toUpperCase();
+          const outcome =
+            m?.outcome === 'WON' ? 'WON' :
+            m?.outcome === 'LOST' ? 'LOST' :
+            m?.outcome === 'DRAW' ? 'DRAW' :
+            'PENDING';
+
+          const isTournament =
+            m?.type === 'TOURNAMENT' ||
+            m?.type === 'TOURNAMENT_MATCH' ||
+            String(m?.gameType || '').toLowerCase() === 'traffic_dodge_tournament';
+
+          return {
+            ...m,
+            id: String(m?.id || ''),
+            entryFee: Number(m?.entryFee || 0),
+            prize: Number(m?.prizeAmount || m?.prize || 0),
+            score: m?.score == null ? null : Number(m.score),
+            userScore: m?.score == null ? null : Number(m.score),
+            opponentScore: m?.opponent?.score ?? m?.opponentScore ?? undefined,
+            opponentName: m?.opponent?.name || m?.opponentName || undefined,
+            date: m?.createdAt
+              ? new Date(m.createdAt).toLocaleString('en-GB')
+              : (m?.date || ''),
+            status:
+              rawStatus === 'COMPLETED'
+                ? outcome
+                : isTournament
+                  ? 'TOURNAMENT'
+                  : 'PENDING',
+            result:
+              rawStatus === 'COMPLETED'
+                ? (outcome === 'WON' ? 'WIN' :
+                   outcome === 'LOST' ? 'LOSS' :
+                   outcome === 'DRAW' ? 'DRAW' : 'PENDING')
+                : isTournament
+                  ? 'TOURNAMENT'
+                  : 'PENDING',
+            mode: isTournament
+              ? `🏆 Tournament • ${m?.title || ''}`
+              : '🚗 Traffic Dodge Pro Match'
+          };
+        });
+
+      // Pending view must show only currently pending/active submissions.
+      // Tournament submissions remain visible here as Tournament records.
+      const pending = mapped.filter(
+        (m: any) => m.status === 'PENDING' || m.status === 'TOURNAMENT'
+      );
+
+      // History view shows completed Car matches.
+      const completed = mapped.filter(
+        (m: any) =>
+          m.status === 'WON' ||
+          m.status === 'LOST' ||
+          m.status === 'DRAW'
+      );
+
+      setPendingHistory(pending);
+      setTrafficHistory(completed);
     } catch (error) {
       console.error('Traffic pending/history refresh error:', error);
     }
-  }, [getPendingGames, getMatchHistory]);
+  }, [getMatchHistory]);
 
   useEffect(() => {
     void refreshTrafficHistory();
