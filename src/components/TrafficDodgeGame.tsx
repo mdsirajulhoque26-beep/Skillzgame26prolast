@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Pause, Play, RotateCcw, Trophy, Coins, Heart, Car, Zap } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { blockAudio } from '../utils/blockPuzzleAudio';
+import { BlockTournamentRankList } from './blockpuzzle/BlockTournamentRankList';
 
 type Mode = 'practice' | 'pro' | 'multiplayer';
 type Item = { id:number; x:number; y:number; coin:boolean; el:HTMLDivElement };
@@ -20,6 +21,41 @@ function seeded(seed:number) {
     }
   `}</style>
 
+  const handleTournamentPlayAgain = async () => {
+    if (!tournamentId) return;
+
+    setTournamentLoading(true);
+
+    try {
+      const data = await (await import('../services/backendApi')).backendApi.joinTournament(tournamentId);
+      const m = data?.match;
+
+      sessionStorage.setItem('skillz_tournament_id', String(tournamentId));
+      sessionStorage.setItem('skillz_tournament_match_id', String(m?.id || ''));
+
+      setTournamentData(data?.tournament || tournamentData);
+      tournamentRef.current = true;
+      tournamentStartedRef.current = true;
+      setMode('pro');
+      setPlayers(2);
+
+      const seed = Number(m?.gameSeed || 0);
+      if (!m?.id || !seed) {
+        setMessage('Tournament game শুরু করা যায়নি।');
+        setScreen('lobby');
+        return;
+      }
+
+      setMatchId(String(m.id));
+      startRun(seed, String(m.id));
+    } catch (e:any) {
+      setMessage(e?.message || 'Tournament আবার শুরু করা যায়নি।');
+      setScreen('lobby');
+    } finally {
+      setTournamentLoading(false);
+    }
+  };
+
   return () => {
     s += 0x6D2B79F5;
     let t = s;
@@ -34,7 +70,7 @@ export const TrafficDodgeGame: React.FC = () => {
   const [mode, setMode] = useState<Mode>('practice');
   const [fee, setFee] = useState(Number(paymentSettings.proMatchFees?.[0] || 20));
   const [players, setPlayers] = useState(2);
-  const [screen, setScreen] = useState<'lobby'|'countdown'|'playing'|'paused'|'submit'|'result'>('lobby');
+  const [screen, setScreen] = useState<'lobby'|'countdown'|'playing'|'paused'|'submit'|'result'|'tournament_rank'>('lobby');
   const [score, setScore] = useState(0);
   const [coins, setCoins] = useState(0);
   const [lives, setLives] = useState(3);
@@ -42,6 +78,10 @@ export const TrafficDodgeGame: React.FC = () => {
   const [pauseUsed, setPauseUsed] = useState(0);
   const [matchId, setMatchId] = useState('');
   const [matchSeed, setMatchSeed] = useState(1);
+  const [tournamentId, setTournamentId] = useState('');
+  const [tournamentData, setTournamentData] = useState<any>(null);
+  const [tournamentLoading, setTournamentLoading] = useState(false);
+  const tournamentRef = useRef(false);
   const [opponent, setOpponent] = useState<any>(null);
   const [outcome, setOutcome] = useState<'WON'|'LOST'|'DRAW'|'PENDING'|null>(null);
   const [pendingHistory, setPendingHistory] = useState<any[]>([]);
@@ -308,6 +348,8 @@ export const TrafficDodgeGame: React.FC = () => {
         if (!Number.isFinite(serverSeed) || serverSeed <= 0) return;
 
         tournamentStartedRef.current = true;
+        tournamentRef.current = true;
+        setTournamentId(String(tournamentId));
         setMode('pro');
         setPlayers(2);
         setMatchId(String(storedMatchId));
@@ -411,11 +453,58 @@ export const TrafficDodgeGame: React.FC = () => {
       return;
     }
 
+    // Tournament: go directly to Tournament Rank List.
+    // Do NOT show the normal Pro Match PENDING/DRAW screen.
+    if (tournamentRef.current) {
+      const settled: any = r.match || {};
+      const id = String(
+        settled?.tournamentId ||
+        tournamentId ||
+        sessionStorage.getItem('skillz_tournament_id') ||
+        ''
+      );
+
+      if (!id) {
+        setMessage('Tournament ID পাওয়া যায়নি।');
+        setScreen('lobby');
+        return;
+      }
+
+      sessionStorage.setItem('skillz_tournament_id', id);
+      sessionStorage.setItem(
+        'skillz_tournament_match_id',
+        String(settled?.id || matchId)
+      );
+
+      setTournamentId(id);
+      setTournamentLoading(true);
+      setScreen('tournament_rank');
+
+      try {
+        const data = await (await import('../services/backendApi')).backendApi.tournament(id);
+        if (data?.tournament) {
+          setTournamentData(data.tournament);
+        }
+      } catch (e) {
+        console.error('Traffic Tournament rank refresh error:', e);
+      } finally {
+        setTournamentLoading(false);
+      }
+
+      return;
+    }
+
+    // Normal Pro Match flow remains unchanged.
     setOutcome('PENDING');
     setScreen('result');
     setMessage('Score submitted. Waiting for opponent result.');
     void refreshTrafficHistory();
-  }, [matchId, submitBlockPuzzleResult, refreshTrafficHistory]);
+  }, [
+    matchId,
+    submitBlockPuzzleResult,
+    refreshTrafficHistory,
+    tournamentId
+  ]);
 
   useEffect(() => {
     const raw = sessionStorage.getItem('skillz_multiplayer_pro_config');
@@ -435,6 +524,7 @@ export const TrafficDodgeGame: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (tournamentRef.current) return;
     if (!matchId || screen === 'lobby' || mode === 'practice') return;
 
     const timer = window.setInterval(async () => {
@@ -582,7 +672,27 @@ export const TrafficDodgeGame: React.FC = () => {
           </div>
         )}
 
-        {screen !== 'lobby' && (
+        {screen === 'tournament_rank' && (
+        <BlockTournamentRankList
+          tournament={tournamentData}
+          currentUserId={user?.id}
+          loading={tournamentLoading}
+          onBackHome={() => {
+            sessionStorage.removeItem('skillz_tournament_match_id');
+            sessionStorage.removeItem('skillz_tournament_id');
+            sessionStorage.removeItem('skillz_tournament_immediate');
+            tournamentRef.current = false;
+            tournamentStartedRef.current = false;
+            setTournamentId('');
+            setTournamentData(null);
+            setMatchId('');
+            setCurrentTab('home');
+          }}
+          onPlayAgain={handleTournamentPlayAgain}
+        />
+      )}
+
+      {screen !== 'lobby' && screen !== 'tournament_rank' && (
           <div className="relative mx-auto w-full h-[76vh] max-h-[760px] min-h-[560px] overflow-hidden rounded-3xl border border-slate-700 bg-slate-700 touch-none select-none"
                               onTouchStart={onTouchStart}
                               onTouchEnd={onTouchEnd}>
