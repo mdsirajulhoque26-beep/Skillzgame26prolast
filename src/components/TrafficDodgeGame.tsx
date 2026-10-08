@@ -192,6 +192,20 @@ export const TrafficDodgeGame: React.FC = () => {
       finishLocal('Game Over — 3 lives used.');
       return;
     }
+
+    // Tournament Traffic Dodge: losing a life must NOT open
+    // the Submit/Pause screen. Continue playing immediately.
+    if (tournamentRef.current) {
+      collisionLockRef.current = false;
+      pausedRef.current = false;
+      runningRef.current = true;
+      lastRef.current = performance.now();
+      setScreen('playing');
+      setMessage(`Crash! ${livesRef.current} life${livesRef.current === 1 ? '' : 's'} remaining.`);
+      rafRef.current = requestAnimationFrame(loop);
+      return;
+    }
+
     pausedRef.current = true;
     pauseStartedRef.current = performance.now();
     if (matchId) void pauseBlockPuzzleMatch(matchId);
@@ -453,8 +467,8 @@ export const TrafficDodgeGame: React.FC = () => {
       return;
     }
 
-    // Tournament: go directly to Tournament Rank List.
-    // Do NOT show the normal Pro Match PENDING/DRAW screen.
+    // Tournament: submit -> directly open Tournament Rank List.
+    // Never show the normal Pro Match PENDING/DRAW result screen.
     if (tournamentRef.current) {
       const settled: any = r.match || {};
       const id = String(
@@ -470,20 +484,91 @@ export const TrafficDodgeGame: React.FC = () => {
         return;
       }
 
+      const submittedScore = Number(scoreRef.current || 0);
+      const submittedMatchId = String(settled?.id || matchId);
+
       sessionStorage.setItem('skillz_tournament_id', id);
-      sessionStorage.setItem(
-        'skillz_tournament_match_id',
-        String(settled?.id || matchId)
-      );
+      sessionStorage.setItem('skillz_tournament_match_id', submittedMatchId);
 
       setTournamentId(id);
       setTournamentLoading(true);
 
       try {
-        const data = await (await import('../services/backendApi')).backendApi.tournament(id);
-        if (data?.tournament) {
-          setTournamentData(data.tournament);
-        }
+        const api = (await import('../services/backendApi')).backendApi;
+        const data = await api.tournament(id);
+        const serverTournament: any = data?.tournament || null;
+
+        setTournamentData((previous: any) => {
+          const base: any = serverTournament || previous || {
+            id,
+            entries: [],
+            prizes: [],
+            maxPlayers: 0,
+            entryFee: Number(
+              sessionStorage.getItem('skillz_tournament_entry_fee') || 0
+            )
+          };
+
+          const entries = Array.isArray(base.entries)
+            ? base.entries.map((entry: any) => ({ ...entry }))
+            : [];
+
+          const currentUserId = String(user?.id || '');
+          if (currentUserId) {
+            const existingIndex = entries.findIndex(
+              (entry: any) => String(entry.userId) === currentUserId
+            );
+
+            if (existingIndex >= 0) {
+              entries[existingIndex].score = Math.max(
+                Number(entries[existingIndex].score || 0),
+                submittedScore
+              );
+              entries[existingIndex].attempts =
+                Number(entries[existingIndex].attempts || 0) + 1;
+              entries[existingIndex].bestScoreAt =
+                new Date().toISOString();
+            } else {
+              entries.push({
+                userId: currentUserId,
+                username: user?.name || 'You',
+                avatarUrl: (user as any)?.avatarUrl || '',
+                avatar: (user as any)?.avatar || '',
+                score: submittedScore,
+                attempts: 1,
+                entryNumber: entries.length + 1,
+                bestScoreAt: new Date().toISOString(),
+                prize: 0
+              });
+            }
+          }
+
+          entries.sort(
+            (a: any, b: any) =>
+              Number(b.score || 0) - Number(a.score || 0) ||
+              Number(a.entryNumber || 0) - Number(b.entryNumber || 0)
+          );
+
+          const rankedEntries = entries.map((entry: any, index: number) => ({
+            ...entry,
+            rank: index + 1,
+            prize: Number(base.prizes?.[index] || 0)
+          }));
+
+          return {
+            ...base,
+            id,
+            entries: rankedEntries,
+            playerCount: Math.max(
+              Number(base.playerCount || 0),
+              rankedEntries.length
+            ),
+            registeredPlayers: Math.max(
+              Number(base.registeredPlayers || 0),
+              rankedEntries.length
+            )
+          };
+        });
       } catch (e) {
         console.error('Traffic Tournament rank refresh error:', e);
       } finally {
