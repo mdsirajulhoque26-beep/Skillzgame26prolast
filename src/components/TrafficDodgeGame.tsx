@@ -340,18 +340,20 @@ export const TrafficDodgeGame: React.FC = () => {
   // the tournament/match IDs. Start Traffic Dodge using the server match seed
   // without charging the entry fee again.
   const tournamentStartedRef = useRef(false);
+  const tournamentBootInFlightRef = useRef(false);
 
   useEffect(() => {
     let timer: number | null = null;
 
     const bootTournament = async () => {
-      if (tournamentStartedRef.current) return;
+      if (tournamentStartedRef.current || tournamentBootInFlightRef.current) return;
 
       const tournamentId = sessionStorage.getItem('skillz_tournament_id') || '';
       const storedMatchId = sessionStorage.getItem('skillz_tournament_match_id') || '';
 
       if (!tournamentId || !storedMatchId) return;
 
+      tournamentBootInFlightRef.current = true;
       try {
         const m = await getBlockPuzzleMatchStatus(storedMatchId);
         if (!m) return;
@@ -372,21 +374,22 @@ export const TrafficDodgeGame: React.FC = () => {
         setMatchId(String(storedMatchId));
         setMessage('');
 
-        // Load Tournament data before the game starts so the Rank List
-        // is ready immediately after score submission.
-        try {
-          const api = (await import('../services/backendApi')).backendApi;
-          const tournamentResponse = await api.tournament(String(tournamentId));
-          if (tournamentResponse?.tournament) {
-            setTournamentData(tournamentResponse.tournament);
-          }
-        } catch (rankError) {
-          console.error('Traffic Tournament data load error:', rankError);
-        }
-
+        // Start immediately after the authoritative match seed is available.
+        // Tournament details load separately and cannot restart the game.
         startRun(serverSeed, String(storedMatchId));
+
+        void import('../services/backendApi')
+          .then(({ backendApi }) => backendApi.tournament(String(tournamentId)))
+          .then((response) => {
+            if (response?.tournament) setTournamentData(response.tournament);
+          })
+          .catch((rankError) => {
+            console.error('Traffic Tournament data load error:', rankError);
+          });
       } catch (error) {
         console.error('Traffic Tournament boot error:', error);
+      } finally {
+        tournamentBootInFlightRef.current = false;
       }
     };
 
