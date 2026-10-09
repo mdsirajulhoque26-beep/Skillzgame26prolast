@@ -196,9 +196,9 @@ export const TrafficDodgeGame: React.FC = () => {
       return;
     }
 
-    // Tournament Traffic Dodge: losing a life must NOT open
-    // the Submit/Pause screen. Continue playing immediately.
-    if (tournamentRef.current) {
+    // Tournament, Pro Match and Multiplayer: losing a life
+    // continues the current run. Only the final life ends the game.
+    if (tournamentRef.current || mode === 'pro' || mode === 'multiplayer') {
       collisionLockRef.current = false;
       pausedRef.current = false;
       runningRef.current = true;
@@ -214,7 +214,7 @@ export const TrafficDodgeGame: React.FC = () => {
     if (matchId) void pauseBlockPuzzleMatch(matchId);
     setScreen('paused');
     setMessage(`Crash! ${livesRef.current} life${livesRef.current === 1 ? '' : 's'} remaining.`);
-  }, [clearObjects, finishLocal, matchId, paintCar, pauseBlockPuzzleMatch]);
+  }, [clearObjects, finishLocal, matchId, mode, paintCar, pauseBlockPuzzleMatch]);
 
   const spawn = useCallback(() => {
     const lane = LANES[Math.floor(rngRef.current() * LANES.length)];
