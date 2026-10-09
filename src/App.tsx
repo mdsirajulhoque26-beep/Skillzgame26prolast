@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
@@ -9,7 +9,8 @@ import { TransactionsScreen } from './components/TransactionsScreen';
 import { HistoryScreen } from './components/HistoryScreen';
 import { ProfileScreen } from './components/ProfileScreen';
 import { BlockPuzzleDuel } from './components/BlockPuzzleDuel';
-const TrafficDodgeGame = lazy(() => import('./components/TrafficDodgeGame').then(m => ({ default: m.TrafficDodgeGame })));
+const loadTrafficDodgeGame = () => import('./components/TrafficDodgeGame').then(m => ({ default: m.TrafficDodgeGame }));
+const TrafficDodgeGame = lazy(loadTrafficDodgeGame);
 import { AdminPanel } from './components/AdminPanel';
 
 // Modals
@@ -26,6 +27,14 @@ import { SupportChatModal } from './components/modals/SupportChatModal';
 
 const MainLayout: React.FC = () => {
   const { isLoggedIn, currentTab } = useApp();
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      void loadTrafficDodgeGame().catch((error) => {
+        console.warn('Traffic Dodge preload failed; it will retry when opened.', error);
+      });
+    }
+  }, [isLoggedIn]);
 
   if (!isLoggedIn) {
     return <AuthScreen />;
