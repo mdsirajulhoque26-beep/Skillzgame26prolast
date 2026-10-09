@@ -112,6 +112,7 @@ export const TrafficDodgeGame: React.FC = () => {
  const pauseLimitTimerRef = useRef<number | null>(null);
   const collisionLockRef = useRef(false);
   const startTimerRef = useRef<number | null>(null);
+  const proStartPromiseRef = useRef<Promise<any> | null>(null);
   const rngRef = useRef(() => Math.random());
   const steerRef = useRef(0);
   const matchStartRef = useRef(0);
@@ -315,23 +316,81 @@ export const TrafficDodgeGame: React.FC = () => {
     }, 900);
   }, [loop, resetGame]);
 
-  const startPaid = useCallback(async (targetPlayers:number) => {
+  const startPaid = useCallback((targetPlayers:number) => {
     if (starting) return;
-    setStarting(true); setMessage('');
+
+    setStarting(true);
+    setMessage('');
+
     try {
-      const prizes = Array.isArray(paymentSettings.proMatchPrizes) ? paymentSettings.proMatchPrizes : [];
-      const feeIndex = (paymentSettings.proMatchFees || []).findIndex(x => Number(x) === Number(fee));
+      const prizes = Array.isArray(paymentSettings.proMatchPrizes)
+        ? paymentSettings.proMatchPrizes
+        : [];
+      const feeIndex = (paymentSettings.proMatchFees || [])
+        .findIndex(x => Number(x) === Number(fee));
       const prize = targetPlayers > 2
         ? Number(paymentSettings.multiplayerProMatches?.find(x => Number(x.players) === targetPlayers)?.prizeAmount || 0)
         : Number(prizes[feeIndex] || 0);
-      if (!prize) throw new Error('এই Entry Fee-এর Prize Admin সেট করেনি।');
+
+      if (!prize) {
+        throw new Error('এই Entry Fee-এর Prize Admin সেট করেনি।');
+      }
+
       const seed = Math.floor(Math.random() * 2147483646) + 1;
-      const r = await startBlockPuzzleMatch(fee, prize, targetPlayers, 'traffic_dodge', seed);
-      if (!r.success || !r.matchId) throw new Error(r.message || 'Traffic Dodge Match শুরু হয়নি।');
-      startRun(Number(r.gameSeed || seed), String(r.matchId));
+
+      // The server still authorizes the paid match and entry fee.
+      // Start the board now; attach the confirmed server match asynchronously.
+      const request = startBlockPuzzleMatch(
+        fee, prize, targetPlayers, 'traffic_dodge', seed
+      );
+      proStartPromiseRef.current = request;
+      startRun(seed, '');
+
+      void request.then((r:any) => {
+        if (!r?.success || !r.matchId) {
+          runningRef.current = false;
+          pausedRef.current = false;
+          cancelAnimationFrame(rafRef.current);
+          if (startTimerRef.current !== null) {
+            window.clearTimeout(startTimerRef.current);
+            startTimerRef.current = null;
+          }
+          setMatchId('');
+          setMessage(r?.message || 'সার্ভারে ম্যাচ তৈরি হয়নি। Entry Fee ও Match Status যাচাই করুন।');
+          setScreen('lobby');
+          return;
+        }
+
+        const confirmedMatchId = String(r.matchId);
+      const serverSeed = Number(r.gameSeed || seed);
+      setMatchId(confirmedMatchId);
+      setMatchSeed(serverSeed);
+
+      // Match Block Puzzle behaviour: sync the untouched Traffic Dodge
+      // run to the shared server seed without interrupting active gameplay.
+      if (Number.isFinite(serverSeed) && serverSeed > 0 &&
+          serverSeed !== seed && !runningRef.current) {
+        startRun(serverSeed, confirmedMatchId);
+      }
+      }).catch((e:any) => {
+        runningRef.current = false;
+        pausedRef.current = false;
+        cancelAnimationFrame(rafRef.current);
+        if (startTimerRef.current !== null) {
+          window.clearTimeout(startTimerRef.current);
+          startTimerRef.current = null;
+        }
+        setMatchId('');
+        setMessage(e?.message || 'সার্ভারের সঙ্গে সংযোগ হয়নি। Match Status যাচাই করুন।');
+        setScreen('lobby');
+      }).finally(() => {
+        setStarting(false);
+      });
     } catch (e:any) {
-      setMessage(e?.message || 'Match শুরু করা যায়নি।'); setScreen('lobby');
-    } finally { setStarting(false); }
+      setMessage(e?.message || 'Match শুরু করা যায়নি।');
+      setScreen('lobby');
+      setStarting(false);
+    }
   }, [fee, paymentSettings, startBlockPuzzleMatch, startRun, starting]);
 
   const startPractice = () => startRun(Math.floor(Math.random() * 2147483646) + 1, '');
@@ -586,14 +645,34 @@ export const TrafficDodgeGame: React.FC = () => {
     pausedRef.current = false;
     cancelAnimationFrame(rafRef.current);
 
-    if (!matchId) {
+    let effectiveMatchId = matchId;
+
+    // If the player finishes before the server responds, wait for the same
+    // request rather than losing the paid score or treating it as Practice.
+    if (!effectiveMatchId && (mode === 'pro' || mode === 'multiplayer') && proStartPromiseRef.current) {
+      const pendingResult:any = await proStartPromiseRef.current;
+      if (!pendingResult?.success || !pendingResult.matchId) {
+        setMessage(pendingResult?.message || 'সার্ভারের ম্যাচ নিশ্চিত হয়নি। স্কোর জমা হয়নি।');
+        setScreen('lobby');
+        return;
+      }
+      effectiveMatchId = String(pendingResult.matchId);
+      setMatchId(effectiveMatchId);
+    }
+
+    if (!effectiveMatchId) {
+      if (tournamentRef.current || mode !== 'practice') {
+        setMessage('সার্ভারের Match ID এখনো নিশ্চিত হয়নি। স্কোর জমা হয়নি।');
+        setScreen('submit');
+        return;
+      }
       setOutcome(null);
       setScreen('result');
       setMessage(`Score ${scoreRef.current} • ${coinsRef.current} coins`);
       return;
     }
 
-    const r = await submitBlockPuzzleResult(matchId, scoreRef.current, 0);
+    const r = await submitBlockPuzzleResult(effectiveMatchId, scoreRef.current, 0);
 
     if (!r.success) {
       setMessage(r.message);
@@ -619,7 +698,7 @@ export const TrafficDodgeGame: React.FC = () => {
       }
 
       const submittedScore = Number(scoreRef.current || 0);
-      const submittedMatchId = String(settled?.id || matchId);
+      const submittedMatchId = String(settled?.id || effectiveMatchId);
 
       sessionStorage.setItem('skillz_tournament_id', id);
       sessionStorage.setItem('skillz_tournament_match_id', submittedMatchId);
@@ -720,6 +799,7 @@ export const TrafficDodgeGame: React.FC = () => {
     void refreshTrafficHistory();
   }, [
     matchId,
+    mode,
     submitBlockPuzzleResult,
     refreshTrafficHistory,
     tournamentId
