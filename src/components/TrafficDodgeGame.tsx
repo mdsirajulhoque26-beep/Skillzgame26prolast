@@ -401,62 +401,83 @@ export const TrafficDodgeGame: React.FC = () => {
     };
   }, [getBlockPuzzleMatchStatus, startRun]);
 
-  const doPause = useCallback(async () => {
+  const doPause = useCallback(() => {
     if (!runningRef.current || pausedRef.current) return;
-    if (pauseUsedRef.current >= MAX_PAUSE_MS) { setMessage('আপনার 60 সেকেন্ড Pause limit শেষ।'); return; }
+
+    if (pauseUsedRef.current >= MAX_PAUSE_MS) {
+      setMessage('আপনার 60 সেকেন্ড Pause limit শেষ।');
+      return;
+    }
+
     pausedRef.current = true;
     pauseStartedRef.current = performance.now();
     steerRef.current = 0;
-    if (matchId) {
-      try {
-        const r = await pauseBlockPuzzleMatch(matchId);
-        if (!r.success) {
-          pausedRef.current = false;
-          pauseStartedRef.current = 0;
-          lastRef.current = performance.now();
-          setMessage(r.message || 'Pause করা যায়নি। আবার চেষ্টা করুন।');
-          rafRef.current = requestAnimationFrame(loop);
-          return;
-        }
-      } catch (error) {
-        pausedRef.current = false;
-        pauseStartedRef.current = 0;
-        lastRef.current = performance.now();
-        setMessage('Pause করা যায়নি। আবার চেষ্টা করুন।');
-        rafRef.current = requestAnimationFrame(loop);
-        return;
-      }
-    }
+    cancelAnimationFrame(rafRef.current);
     setScreen('paused');
     setPauseUsed(Math.floor(pauseUsedRef.current / 1000));
-  }, [loop, matchId, pauseBlockPuzzleMatch]);
 
-  const doResume = useCallback(async () => {
-    if (!pausedRef.current) return;
+    // Sync server state in the background; never block local Pause.
     if (matchId) {
-      try {
-        const r = await resumeBlockPuzzleMatch(matchId);
-        if (!r.success) { setMessage(r.message || 'Resume করা যায়নি। আবার চেষ্টা করুন।'); return; }
-      } catch (error) {
-        setMessage('Resume করা যায়নি। আবার চেষ্টা করুন।');
-        return;
-      }
+      void pauseBlockPuzzleMatch(matchId).catch(() => {});
     }
-    const spent = Math.max(0, performance.now() - pauseStartedRef.current);
-    pauseUsedRef.current = Math.min(MAX_PAUSE_MS, pauseUsedRef.current + spent);
+  }, [matchId, pauseBlockPuzzleMatch]);
+
+  const doResume = useCallback(() => {
+    if (!pausedRef.current) return;
+
+    const now = performance.now();
+    const spent = Math.max(0, now - pauseStartedRef.current);
+    pauseUsedRef.current = Math.min(
+      MAX_PAUSE_MS,
+      pauseUsedRef.current + spent
+    );
     setPauseUsed(Math.floor(pauseUsedRef.current / 1000));
+
+    // Sync server state in the background; never block local Resume.
+    if (matchId) {
+      void resumeBlockPuzzleMatch(matchId).catch(() => {});
+    }
+
     if (pauseUsedRef.current >= MAX_PAUSE_MS) {
       finishLocal('60-second Pause limit reached — submit your score.');
       return;
     }
+
     pausedRef.current = false;
     runningRef.current = true;
     pauseStartedRef.current = 0;
-    lastRef.current = performance.now();
+    lastRef.current = now;
     cancelAnimationFrame(rafRef.current);
     setScreen('playing');
     rafRef.current = requestAnimationFrame(loop);
   }, [finishLocal, loop, matchId, resumeBlockPuzzleMatch]);
+
+  useEffect(() => {
+    if (screen !== 'paused' || !pausedRef.current) return;
+
+    const timer = window.setInterval(() => {
+      const spent = Math.max(0, performance.now() - pauseStartedRef.current);
+      const total = Math.min(
+        MAX_PAUSE_MS,
+        pauseUsedRef.current + spent
+      );
+
+      setPauseUsed(Math.floor(total / 1000));
+
+      if (total >= MAX_PAUSE_MS) {
+        pauseUsedRef.current = MAX_PAUSE_MS;
+        setPauseUsed(60);
+
+        if (matchId) {
+          void resumeBlockPuzzleMatch(matchId).catch(() => {});
+        }
+
+        finishLocal('60-second Pause limit reached — submit your score.');
+      }
+    }, 200);
+
+    return () => window.clearInterval(timer);
+  }, [screen, matchId, resumeBlockPuzzleMatch, finishLocal]);
 
   const refreshTrafficHistory = useCallback(async () => {
     try {
