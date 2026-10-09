@@ -402,32 +402,53 @@ export const TrafficDodgeGame: React.FC = () => {
   }, [getBlockPuzzleMatchStatus, startRun]);
 
   const doPause = useCallback(async () => {
-    if (!runningRef.current) return;
+    if (!runningRef.current || pausedRef.current) return;
     if (pauseUsedRef.current >= MAX_PAUSE_MS) { setMessage('আপনার 60 সেকেন্ড Pause limit শেষ।'); return; }
-    pausedRef.current = true; pauseStartedRef.current = performance.now(); steerRef.current = 0;
+    pausedRef.current = true;
+    pauseStartedRef.current = performance.now();
+    steerRef.current = 0;
     if (matchId) {
-      const r = await pauseBlockPuzzleMatch(matchId);
-      if (!r.success) { pausedRef.current = false; return; }
+      try {
+        const r = await pauseBlockPuzzleMatch(matchId);
+        if (!r.success) {
+          pausedRef.current = false;
+          pauseStartedRef.current = 0;
+          lastRef.current = performance.now();
+          setMessage(r.message || 'Pause করা যায়নি। আবার চেষ্টা করুন।');
+          rafRef.current = requestAnimationFrame(loop);
+          return;
+        }
+      } catch (error) {
+        pausedRef.current = false;
+        pauseStartedRef.current = 0;
+        lastRef.current = performance.now();
+        setMessage('Pause করা যায়নি। আবার চেষ্টা করুন।');
+        rafRef.current = requestAnimationFrame(loop);
+        return;
+      }
     }
     setScreen('paused');
     setPauseUsed(Math.floor(pauseUsedRef.current / 1000));
-  }, [matchId, pauseBlockPuzzleMatch]);
+  }, [loop, matchId, pauseBlockPuzzleMatch]);
 
   const doResume = useCallback(async () => {
     if (!pausedRef.current) return;
+    if (matchId) {
+      try {
+        const r = await resumeBlockPuzzleMatch(matchId);
+        if (!r.success) { setMessage(r.message || 'Resume করা যায়নি। আবার চেষ্টা করুন।'); return; }
+      } catch (error) {
+        setMessage('Resume করা যায়নি। আবার চেষ্টা করুন।');
+        return;
+      }
+    }
     const spent = Math.max(0, performance.now() - pauseStartedRef.current);
     pauseUsedRef.current = Math.min(MAX_PAUSE_MS, pauseUsedRef.current + spent);
     setPauseUsed(Math.floor(pauseUsedRef.current / 1000));
-    if (matchId) {
-      const r = await resumeBlockPuzzleMatch(matchId);
-      if (!r.success) { setMessage(r.message); return; }
-    }
     if (pauseUsedRef.current >= MAX_PAUSE_MS) {
       finishLocal('60-second Pause limit reached — submit your score.');
       return;
     }
-    clearObjects();
-    collisionLockRef.current = false;
     pausedRef.current = false;
     runningRef.current = true;
     pauseStartedRef.current = 0;
