@@ -355,14 +355,20 @@ export const TrafficDodgeGame: React.FC = () => {
 
       tournamentBootInFlightRef.current = true;
       try {
-        const m = await getBlockPuzzleMatchStatus(storedMatchId);
-        if (!m) return;
-
-        const serverSeed = Number(
-          (m as any).gameSeed ??
-          (m as any).match?.gameSeed ??
-          0
+        let serverSeed = Number(
+          sessionStorage.getItem('skillz_tournament_game_seed') || 0
         );
+
+        // Use the server seed from Tournament Join when available.
+        // Otherwise retain the existing server-status verification.
+        if (!Number.isFinite(serverSeed) || serverSeed <= 0) {
+          const m = await getBlockPuzzleMatchStatus(storedMatchId);
+          if (!m) return;
+
+          serverSeed = Number(
+            (m as any).gameSeed ?? (m as any).match?.gameSeed ?? 0
+          );
+        }
 
         if (!Number.isFinite(serverSeed) || serverSeed <= 0) return;
 
