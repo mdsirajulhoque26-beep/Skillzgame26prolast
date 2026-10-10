@@ -83,10 +83,9 @@ export const HomeScreen: React.FC = () => {
     // Traffic Dodge/Car tournaments must never fall back to Block Puzzle.
     const tournamentGameType = String(t.gameType || 'block_puzzle').toLowerCase();
     const isTrafficTournament =
-      tournamentGameType === 'traffic_dodge' ||
-      tournamentGameType === 'traffic' ||
+      tournamentGameType.includes('traffic') ||
       tournamentGameType === 'car' ||
-      tournamentGameType === 'car_dodge';
+      tournamentGameType.includes('car_dodge');
 
     sessionStorage.setItem(
       'skillz_game_type',
