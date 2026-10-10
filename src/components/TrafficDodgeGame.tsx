@@ -199,6 +199,19 @@ export const TrafficDodgeGame: React.FC = () => {
       return;
     }
 
+    // Practice: losing a life should not pause the game.
+    // Keep playing automatically until all three lives are used.
+    if (mode === 'practice' && !tournamentRef.current) {
+      collisionLockRef.current = false;
+      pausedRef.current = false;
+      runningRef.current = true;
+      lastRef.current = performance.now();
+      setScreen('playing');
+      setMessage(`Crash! ${livesRef.current} life${livesRef.current === 1 ? '' : 's'} remaining.`);
+      rafRef.current = requestAnimationFrame(loop);
+      return;
+    }
+
     // Tournament, Pro Match and Multiplayer: losing a life
     // continues the current run. Only the final life ends the game.
     if (tournamentRef.current || mode === 'pro' || mode === 'multiplayer') {
