@@ -432,6 +432,73 @@ async function reconcileBlockPuzzleDuel(duelId) {
   });
 }
 
+async function reconcileSubmittedTournamentMatch(matchId, userId) {
+  return withDbLock(async () => {
+    const db = await loadDb();
+    const session = (db.blockPuzzleMatches || []).find(
+      m => m.id === matchId && m.userId === userId
+    );
+
+    if (!session || session.status !== 'SUBMITTED' || !session.tournamentId) {
+      return false;
+    }
+
+    session.status = 'COMPLETED';
+    session.outcome = 'TOURNAMENT';
+    session.settledAt = session.settledAt || now();
+
+    const tournament = (db.tournaments || []).find(
+      t => t.id === session.tournamentId
+    );
+
+    if (tournament && tournament.status === 'ACTIVE') {
+      const entries = ensureTournamentEntries(db, tournament);
+      const entry = entries.find(e => e.userId === session.userId);
+
+      if (entry) {
+        entry.attempts = Math.max(
+          Number(entry.attempts || 0),
+          (db.blockPuzzleMatches || []).filter(
+            m => m.tournamentId === tournament.id &&
+                 m.userId === session.userId
+          ).length
+        );
+
+        if (Number(session.score || 0) >= Number(entry.bestScore || 0)) {
+          entry.bestScore = Number(session.score || 0);
+          entry.bestScoreAt = session.submittedAt || now();
+          entry.lastMatchId = session.id;
+        }
+      }
+
+      const lastPlayer = entries.find(
+        e => Number(e.entryNumber) === Number(tournament.maxPlayers)
+      );
+
+      if (
+        entries.length >= Number(tournament.maxPlayers) &&
+        lastPlayer &&
+        lastPlayer.userId === session.userId
+      ) {
+        await finalizeTournamentInternal(db, tournament);
+      }
+    }
+
+    maybeAwardReferralBonus(db, session.userId);
+
+    await saveDbPartial(db, [
+      'blockPuzzleMatches',
+      'users',
+      'transactions',
+      'tournaments',
+      'tournamentEntries',
+      'referrals'
+    ]);
+
+    return true;
+  });
+}
+
 function leaderboardEntries(db, board, freeze = false) {
   if (freeze && Array.isArray(board.finalEntries)) return board.finalEntries;
   const users = new Map((db.users || []).map(u => [u.id, u]));
@@ -1603,6 +1670,13 @@ app.get('/api/block-puzzle/matches/:id/status', async (req, res) => {
       waitUntil(
         reconcileBlockPuzzleDuel(session.duelId)
           .catch(err => console.error('[block-puzzle] status reconciliation failed:', err))
+      );
+    }
+
+    if (session.status === 'SUBMITTED' && session.tournamentId) {
+      waitUntil(
+        reconcileSubmittedTournamentMatch(session.id, payload.userId)
+          .catch(err => console.error('[tournament] status reconciliation failed:', err))
       );
     }
 

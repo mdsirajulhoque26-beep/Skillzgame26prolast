@@ -233,25 +233,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     refreshBackendState().catch(() => { localStorage.removeItem('skillz_api_token'); setIsLoggedIn(false); setIsAdminMode(false); });
   }, []);
 
-  // Live lobby polling keeps online matchmaking and admin queues synchronized across devices.
+  // Keep match updates responsive without repeatedly loading every account endpoint.
   useEffect(() => {
     if (!isLoggedIn || !localStorage.getItem('skillz_api_token')) return;
-    const timer = window.setInterval(async () => {
-      refreshMatches();
+
+    let matchesBusy = false;
+    let accountBusy = false;
+
+    const matchesTimer = window.setInterval(async () => {
+      if (matchesBusy) return;
+      matchesBusy = true;
       try {
-        const [me, txData, mine] = await Promise.all([backendApi.me(), backendApi.transactions(), backendApi.myRequests()]);
+        await refreshMatches();
+      } finally {
+        matchesBusy = false;
+      }
+    }, 8000);
+
+    const accountTimer = window.setInterval(async () => {
+      if (accountBusy) return;
+      accountBusy = true;
+      try {
+        const [me, txData, mine] = await Promise.all([
+          backendApi.me(),
+          backendApi.transactions(),
+          backendApi.myRequests()
+        ]);
+
         applyApiUser(me.user);
         setTransactions(txData.transactions as Transaction[]);
+
         if (isAdminMode) {
-          refreshUsers();
+          await refreshUsers();
         } else {
-          setDepositRequests(prev => mergeStableById(prev, mine.depositRequests as DepositRequest[]));
-          setWithdrawRequests(prev => mergeStableById(prev, mine.withdrawRequests as WithdrawRequest[]));
+          setDepositRequests(prev =>
+            mergeStableById(prev, mine.depositRequests as DepositRequest[])
+          );
+          setWithdrawRequests(prev =>
+            mergeStableById(prev, mine.withdrawRequests as WithdrawRequest[])
+          );
           setResultSubmissions(mine.resultSubmissions as ResultSubmission[]);
         }
-      } catch (e) { console.error('User state refresh failed:', e); }
-    }, 5000);
-    return () => window.clearInterval(timer);
+      } catch (e) {
+        console.error('User state refresh failed:', e);
+      } finally {
+        accountBusy = false;
+      }
+    }, 30000);
+
+    return () => {
+      window.clearInterval(matchesTimer);
+      window.clearInterval(accountTimer);
+    };
   }, [isLoggedIn, isAdminMode]);
 
   const login = async (phone: string, pass: string): Promise<{ success: boolean; message?: string }> => {
@@ -263,11 +296,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const data = await backendApi.login(cleanPhone, cleanPass);
       localStorage.setItem('skillz_api_token', data.token);
+
+      // Load the latest admin settings before opening Home.
+      let latestSettings: Awaited<ReturnType<typeof backendApi.settings>>;
+      try {
+        latestSettings = await backendApi.settings();
+      } catch (settingsError) {
+        localStorage.removeItem('skillz_api_token');
+        console.error('Latest settings could not be loaded:', settingsError);
+        return {
+          success: false,
+          message: 'সর্বশেষ গেম সেটিংস লোড হয়নি। ইন্টারনেট পরীক্ষা করে আবার লগইন করুন।'
+        };
+      }
+
       const loggedInUser = mapApiUser(data.user);
+      setPaymentSettings({
+        ...(latestSettings.paymentSettings as PaymentSettings),
+        referralEnabled: latestSettings.referralSettings?.enabled,
+        referralBonusAmount: latestSettings.referralSettings?.bonusAmount,
+        referralMinDeposit: latestSettings.referralSettings?.minDeposit,
+        referralRequireFirstProMatch: latestSettings.referralSettings?.requireFirstProMatch
+      });
       setUser(loggedInUser);
-      setIsLoggedIn(true);
       setIsAdminMode(Boolean(loggedInUser.isAdmin));
-                        setActiveModal(null);
+      setActiveModal(null);
+      setIsLoggedIn(true);
 
       void refreshBackendState(Boolean(loggedInUser.isAdmin)).catch((error) => {
         console.error('Background login refresh failed:', error);
