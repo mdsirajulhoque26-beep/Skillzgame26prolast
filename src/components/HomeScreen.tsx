@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { 
-  Play, 
-  Volume2, 
-  Video, 
+import {
+  Play,
+  Volume2,
+  Video,
   Zap,
   Gamepad2,
   Trophy,
@@ -97,12 +97,12 @@ export const HomeScreen: React.FC = () => {
     sessionStorage.setItem('skillz_tournament_immediate', '1');
     sessionStorage.setItem('skillz_tournament_entry_fee', String(Number(t.entryFee || 0)));
     // Open the selected game immediately while the Tournament Join request runs.
-    setCurrentTab(isTrafficTournament ? 'traffic_dodge' : 'block_puzzle');
+
     try {
       const data = await backendApi.joinTournament(t.id);
       sessionStorage.setItem('skillz_tournament_match_id', String(data.match?.id || ''));
       sessionStorage.setItem('skillz_tournament_game_seed', String(data.match?.gameSeed ?? data.match?.game_seed ?? ''));
-      setCurrentTab(isTrafficTournament ? 'traffic_dodge' : 'block_puzzle');
+      setCurrentTab('block_puzzle');
     } catch (e:any) {
       sessionStorage.removeItem('skillz_tournament_immediate');
       sessionStorage.removeItem('skillz_tournament_match_id');
