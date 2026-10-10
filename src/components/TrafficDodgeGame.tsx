@@ -91,6 +91,8 @@ export const TrafficDodgeGame: React.FC = () => {
   const [historyView, setHistoryView] = useState<'pending'|'history'|null>(null);
   const [message, setMessage] = useState('');
   const [starting, setStarting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
  const [bestScore, setBestScore] = useState(() =>
    Number(localStorage.getItem('traffic_dodge_best_score') || 0)
  );
@@ -641,6 +643,10 @@ export const TrafficDodgeGame: React.FC = () => {
 
 
   const submit = useCallback(async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setIsSubmitting(true);
+    try {
     runningRef.current = false;
     pausedRef.current = false;
     cancelAnimationFrame(rafRef.current);
@@ -797,6 +803,10 @@ export const TrafficDodgeGame: React.FC = () => {
     setScreen('result');
     setMessage('Score submitted. Waiting for opponent result.');
     void refreshTrafficHistory();
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
+    }
   }, [
     matchId,
     mode,
@@ -1051,9 +1061,10 @@ export const TrafficDodgeGame: React.FC = () => {
                     <div className="space-y-4">
                       <div className="text-3xl font-black">🏁 SUBMIT SCORE</div>
                       <div className="text-2xl font-black text-cyan-300">{score} POINTS</div>
-                      <button onClick={submit} className="rounded-xl bg-emerald-500 px-8 py-3 font-black">
-                        SUBMIT SCORE
+                      <button onClick={submit} disabled={isSubmitting} className="rounded-xl bg-emerald-500 px-8 py-3 font-black disabled:cursor-wait disabled:opacity-60">
+                        {isSubmitting ? "⏳ SUBMITTING…" : "SUBMIT SCORE"}
                       </button>
+                      {isSubmitting && <p role="status" className="text-sm font-bold text-amber-300">⏳ Score Submitting… Please wait.</p>}
                     </div>
                   )}
 
