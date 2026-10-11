@@ -1155,7 +1155,7 @@ export const TrafficDodgeGame: React.FC = () => {
                       </button>
 
                       <button
-                        onClick={resetLobby}
+                        onClick={() => mode === 'practice' ? startPractice() : resetLobby()}
                         className="w-full rounded-xl bg-cyan-400 px-6 py-3 font-black text-slate-950"
                       >
                         PLAY AGAIN
