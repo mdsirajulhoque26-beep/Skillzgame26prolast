@@ -48,6 +48,7 @@ export const HistoryScreen: React.FC = () => {
   const [problemType, setProblemType] = useState('NETWORK');
   const [details, setDetails] = useState('');
   const [submittingComplaint, setSubmittingComplaint] = useState(false);
+  const [selectedTournament, setSelectedTournament] = useState<any | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,16 +98,26 @@ export const HistoryScreen: React.FC = () => {
         continue;
       }
 
-      if (String(m?.tournamentStatus || '').toUpperCase() != 'ENDED') continue;
-      if (String(m?.tournamentStatus || '').toUpperCase() != 'ENDED') continue;
+      const tournamentStatus = String(m?.tournamentStatus || m?.status || '').toUpperCase();
+      if (tournamentStatus !== 'ENDED') continue;
+
       const tournamentKey = String(m?.tournamentId || m?.id || '');
       if (!tournamentKey) continue;
 
       const existing = tournamentGroups.get(tournamentKey);
-      if (!existing || Number(m?.score || 0) > Number(existing?.score || 0)) {
+      if (!existing) {
         tournamentGroups.set(tournamentKey, m);
-      } else if (m?.tournamentStatus === 'ENDED' && existing?.tournamentStatus !== 'ENDED') {
-        tournamentGroups.set(tournamentKey, { ...existing, tournamentStatus: 'ENDED' });
+      } else {
+        const preferred = m?.tournamentRank != null || m?.tournamentPayoutStatus ? m : existing;
+        const other = preferred === m ? existing : m;
+        tournamentGroups.set(tournamentKey, {
+          ...other,
+          ...preferred,
+          tournamentStatus: 'ENDED',
+          tournamentRank: preferred?.tournamentRank ?? other?.tournamentRank ?? null,
+          tournamentPrize: preferred?.tournamentPrize ?? other?.tournamentPrize ?? 0,
+          tournamentPayoutStatus: preferred?.tournamentPayoutStatus ?? other?.tournamentPayoutStatus ?? null,
+        });
       }
     }
 
@@ -218,7 +229,7 @@ export const HistoryScreen: React.FC = () => {
             const date = dateValue ? new Date(dateValue).toLocaleString('en-GB') : '—';
 
             return (
-              <div key={String(m?.matchId || m?.id || i)} className="overflow-hidden rounded-2xl border border-indigo-900/70 bg-[#121b36] shadow-lg">
+              <div key={String(m?.matchId || m?.id || i)} onClick={() => { if (getCategory(m) === "TOURNAMENT") setSelectedTournament(m); }} className={`overflow-hidden rounded-2xl border border-indigo-900/70 bg-[#121b36] shadow-lg ${getCategory(m) === "TOURNAMENT" ? "cursor-pointer" : ""}`}>
                 <div className="px-3 pt-3 flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <div className="w-11 h-11 rounded-full bg-[#0a1225] border border-cyan-500/20 flex items-center justify-center shrink-0">
@@ -273,6 +284,48 @@ export const HistoryScreen: React.FC = () => {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {selectedTournament && (
+        <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3" onClick={() => setSelectedTournament(null)}>
+          <div className="w-full max-w-sm rounded-2xl border border-amber-500/30 bg-[#121935] p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h3 className="font-black text-white text-lg">Tournament Result</h3>
+                <p className="text-xs text-slate-400 mt-1">{selectedTournament.title || 'Tournament'}</p>
+              </div>
+              <button onClick={() => setSelectedTournament(null)} className="rounded-lg bg-[#0b1022] p-2 text-slate-300"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl bg-[#0b1022] p-3">
+                <span className="text-[10px] text-slate-500">YOUR RANK</span>
+                <b className="block mt-1 text-xl text-amber-300">{selectedTournament.tournamentRank != null ? '#' + selectedTournament.tournamentRank : '—'}</b>
+              </div>
+              <div className="rounded-xl bg-[#0b1022] p-3">
+                <span className="text-[10px] text-slate-500">YOUR SCORE</span>
+                <b className="block mt-1 text-xl text-cyan-300">{Number(selectedTournament.score || 0)}</b>
+              </div>
+              <div className="rounded-xl bg-[#0b1022] p-3">
+                <span className="text-[10px] text-slate-500">PRIZE AMOUNT</span>
+                <b className="block mt-1 text-lg text-amber-300">{money(Number(selectedTournament.tournamentPrize ?? selectedTournament.prizeAmount ?? 0))}</b>
+              </div>
+              <div className="rounded-xl bg-[#0b1022] p-3">
+                <span className="text-[10px] text-slate-500">ATTEMPTS</span>
+                <b className="block mt-1 text-xl text-white">{Number(selectedTournament.attempts || 0)}</b>
+              </div>
+            </div>
+            <div className="mt-4 rounded-xl bg-[#0b1022] p-3">
+              <span className="text-[10px] text-slate-500">PAYMENT STATUS</span>
+              <b className="block mt-1 text-sm text-white">
+                {String(selectedTournament.tournamentPayoutStatus || '').toUpperCase() === 'PAID' ? 'পরিশোধিত' :
+                 String(selectedTournament.tournamentPayoutStatus || '').toUpperCase() === 'HELD' ? 'আটকে আছে' :
+                 String(selectedTournament.tournamentPayoutStatus || '').toUpperCase() === 'PENDING' ? 'পেমেন্ট অপেক্ষমাণ' :
+                 'পুরস্কারের জন্য যোগ্য নন'}
+              </b>
+            </div>
+            <button onClick={() => setSelectedTournament(null)} className="mt-4 w-full rounded-xl bg-cyan-400 py-3 text-sm font-black text-slate-950">বন্ধ করুন</button>
+          </div>
         </div>
       )}
       {complaintMatch && (

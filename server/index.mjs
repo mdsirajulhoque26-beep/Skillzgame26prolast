@@ -1507,17 +1507,44 @@ app.get('/api/history', async (req, res) => {
     }
 
     for (const t of tournaments) {
-      if (String(t.status).toUpperCase() !== 'ACTIVE') continue;
+      const tournamentStatus = String(t.status || '').toUpperCase();
+      if (!['ACTIVE', 'ENDED'].includes(tournamentStatus)) continue;
+
       const e = entries.find(x => String(x.tournamentId) === String(t.id) && String(x.userId) === uid);
       if (!e) continue;
-      const hasSession = matches.some(m => String(m.tournamentId) === String(t.id) && String(m.userId) === uid && ['PENDING','PLAYING','SUBMITTED'].includes(String(m.status).toUpperCase()));
-      if (hasSession) continue;
+
+      const finalEntry = (Array.isArray(t.finalEntries) ? t.finalEntries : [])
+        .find(x => String(x.userId) === uid);
+      const payout = (Array.isArray(t.payouts) ? t.payouts : [])
+        .find(x => String(x.userId) === uid);
+
+      const hasSession = matches.some(m =>
+        String(m.tournamentId) === String(t.id) &&
+        String(m.userId) === uid &&
+        ['PENDING', 'PLAYING', 'SUBMITTED'].includes(String(m.status).toUpperCase())
+      );
+      if (tournamentStatus === 'ACTIVE' && hasSession) continue;
+
       items.push({
-        id: `tournament_${t.id}_${uid}`, matchId: `tournament_${t.id}_${uid}`,
-        type: 'TOURNAMENT', gameType: 'block_puzzle_tournament', title: t.name || 'Tournament',
-        status: 'PENDING', entryFee: Number(t.entryFee || 0), prizeAmount: Number(t.prizePool || 0),
-        score: Number(e.bestScore || 0), attempts: Number(e.attempts || 0),
-        createdAt: e.joinedAt || t.createdAt || null, tournamentId: t.id,
+        id: `tournament_${t.id}_${uid}`,
+        matchId: `tournament_${t.id}_${uid}`,
+        type: 'TOURNAMENT',
+        gameType: 'block_puzzle_tournament',
+        title: t.name || 'Tournament',
+        status: tournamentStatus,
+        tournamentStatus,
+        entryFee: Number(t.entryFee || 0),
+        prizeAmount: Number(finalEntry?.prize ?? payout?.prize ?? 0),
+        score: Number(finalEntry?.score ?? e.bestScore ?? 0),
+        attempts: Number(finalEntry?.attempts ?? e.attempts ?? 0),
+        tournamentRank: finalEntry?.rank == null ? null : Number(finalEntry.rank),
+        tournamentPrize: Number(finalEntry?.prize ?? payout?.prize ?? 0),
+        tournamentPayoutStatus: payout?.status || (Number(finalEntry?.prize || 0) > 0 ? 'PENDING' : 'NOT_ELIGIBLE'),
+        tournamentPayoutSummary: t.payoutStatus || null,
+        createdAt: e.joinedAt || t.createdAt || null,
+        completedAt: t.finalizedAt || t.updatedAt || null,
+        finalizedAt: t.finalizedAt || null,
+        tournamentId: t.id,
       });
     }
 
